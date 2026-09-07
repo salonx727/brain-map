@@ -8,18 +8,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { WIRES, buildSeedNodes } from "./seed";
 import { counts, isEmpty, linksOf } from "./graph";
-import { clearStore, loadMap, saveMap } from "./store";
-import type { BrainNode, Drop, Link, Nodes, Shape } from "./types";
+import type { BrainNode, Drop, Link, Model, Shape } from "./types";
 
-export type Model = {
-  nodes: Nodes;
-  order: string[];
-  links: Link[];
-  /** unrouted is a state, not an error */
-  unrouted: Drop[];
-};
+/* Model itself now lives in ./types, because the server builds one before any of this
+   client module exists. Re-exported so every existing `from "@/lib/brain"` import keeps
+   working untouched. */
+export type { Model };
 
 type Trash = {
   node: BrainNode;
@@ -28,28 +23,14 @@ type Trash = {
   at: number;
 };
 
-function initModel(): { model: Model; note: string } {
-  const { nodes, order, byRef } = buildSeedNodes();
-  const links: Link[] = [];
-  WIRES.forEach((w) => {
-    const a = byRef[w[0]];
-    const b = byRef[w[1]];
-    if (a && b) links.push({ a, b, why: w[2], back: !!w[3] });
-  });
+/* The arrangement no longer comes from localStorage. It is read server-side from the
+   canonical COYOTE mirror plus the PM layer (lib/adapter.ts) and handed in whole, so the
+   surface renders real nodes, real to-dos and real wires on first paint.
 
-  const model: Model = { nodes, order, links, unrouted: [] };
-  const res = loadMap(nodes, order);
-  if (res.ok) {
-    model.nodes = res.nodes;
-    model.order = res.order;
-    if (res.links) model.links = res.links;
-    if (res.unrouted) model.unrouted = res.unrouted;
-    return { model, note: "" };
-  }
-  /* Nothing usable was read. The cards keep their seed positions and stand
-     empty — that is placement, not reset. Nothing is invented to fill them. */
-  return { model, note: res.note };
-}
+   Writes are not wired to the backend yet. Rather than let an edit look saved and vanish
+   on reload — the single failure this whole rebuild exists to stop making — saveNow()
+   below stays honest and the surface carries a standing note saying so. */
+const NOT_WIRED_NOTE = "READ-ONLY · EDITS ARE NOT SAVED YET";
 
 export type Brain = {
   model: Model;
@@ -86,38 +67,28 @@ export function useBrain(): Brain {
   return ctx;
 }
 
-export function BrainProvider({ children }: { children: React.ReactNode }) {
-  const boot = useRef<{ model: Model; note: string } | null>(null);
-  if (!boot.current) boot.current = initModel();
-
-  const modelRef = useRef<Model>(boot.current.model);
-  const seqRef = useRef<number>(boot.current.model.order.length);
-  const storeOK = useRef<boolean>(true);
+export function BrainProvider({ initialModel, children }: { initialModel: Model; children: React.ReactNode }) {
+  const modelRef = useRef<Model>(initialModel);
+  const seqRef = useRef<number>(initialModel.order.length);
 
   const [version, setVersion] = useState(0);
-  const [storeNote, setStoreNote] = useState(boot.current.note);
-  const [savedFlash, setSavedFlash] = useState(false);
+  const [storeNote, setStoreNote] = useState(NOT_WIRED_NOTE);
+  /* Stays false while writes are unwired — see saveNow(). */
+  const [savedFlash] = useState(false);
   const [undone, setUndone] = useState<{ ref: string; quiet: boolean } | null>(null);
 
   const trashRef = useRef<Trash | null>(null);
   const saveTimer = useRef<number | null>(null);
-  const flashTimer = useRef<number | null>(null);
   const undoTimer = useRef<number | null>(null);
 
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
+  /* Intentionally does not persist, and intentionally does not flash "saved" either —
+     the flash is the surface's only signal that something was written, and firing it
+     against a no-op is exactly how a person comes to believe they saved something they
+     did not. The standing note stays up instead. */
   const saveNow = useCallback(() => {
-    if (!storeOK.current) return;
-    const m = modelRef.current;
-    const res = saveMap(m.nodes, m.order, m.links, m.unrouted);
-    if (!res.storeOK) {
-      storeOK.current = false;
-      setStoreNote(res.note);
-      return;
-    }
-    setSavedFlash(true);
-    if (flashTimer.current) window.clearTimeout(flashTimer.current);
-    flashTimer.current = window.setTimeout(() => setSavedFlash(false), 1400);
+    setStoreNote(NOT_WIRED_NOTE);
   }, []);
 
   const saveSoon = useCallback(() => {
@@ -205,9 +176,10 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
     setUndone(null);
   }, [bump, saveNow]);
 
-  /* Pressed on purpose, never automatic. */
+  /* Pressed on purpose, never automatic. Now that the arrangement is served rather than
+     stored locally, there is no local copy left to clear — reloading re-reads the real
+     one, which discards this session's unsaved edits and nothing else. */
   const reset = useCallback(() => {
-    clearStore();
     window.location.reload();
   }, []);
 

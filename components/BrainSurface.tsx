@@ -5,20 +5,22 @@ import { BrainProvider, resetTally, useBrain } from "@/lib/brain";
 import { IntakeProvider } from "@/lib/intake";
 import { COUNTERS, SIZE } from "@/lib/seed";
 import { centreOf, collides, linksOf, otherEnd } from "@/lib/graph";
+import type { Model } from "@/lib/types";
 import ControlPanel from "./ControlPanel";
 import Field3D from "./Field3D";
 import NodeCard from "./NodeCard";
 import Roster, { type RosterMode } from "./Roster";
 
-export default function BrainSurface() {
-  /* localStorage is the source of truth for the arrangement, so the surface is
-     built on the client. It never renders a seed layout it would then replace. */
+export default function BrainSurface({ initialModel }: { initialModel: Model }) {
+  /* The arrangement now arrives from the server already resolved (app/page.tsx ->
+     lib/adapter.ts), so there is no stored layout to wait for. The mount gate stays
+     because the canvas measures the window on first paint. */
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
   return (
-    <BrainProvider>
+    <BrainProvider initialModel={initialModel}>
       <Surface />
     </BrainProvider>
   );

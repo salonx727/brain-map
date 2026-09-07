@@ -7,8 +7,16 @@ export type NodeState =
   | "DONE"
   | "OUT OF SCOPE";
 
+/* The optional `id`/`storagePath` fields below are the only change this file needed to
+   sit on a real backend. The prototype identified an item by its position in an array,
+   which is identity enough for one localStorage blob and not enough to update the right
+   row. They are optional so every component that never reads them stays untouched, and
+   so an item the user just typed — real, but not yet written — is still a valid Item. */
+
 /** Every list item carries the section that declares it. */
 export type Item = {
+  /** A real pm_items.id once persisted; absent while the item is new. */
+  id?: string;
   text: string;
   done: boolean;
   sec: string;
@@ -16,6 +24,8 @@ export type Item = {
 
 /** A UI slot holds an image and nothing else. slot_index matters. */
 export type Shot = {
+  id?: string;
+  storagePath?: string;
   name: string;
   data: string | null;
   w?: number;
@@ -24,6 +34,8 @@ export type Shot = {
 
 /** A drop is arrival-ordered and takes any type. */
 export type Drop = {
+  id?: string;
+  storagePath?: string;
   name: string;
   size: number | null;
   type?: string;
@@ -51,6 +63,11 @@ export type BrainNode = {
 };
 
 export type Link = {
+  /** A real pm_node_links.id for a user-drawn wire. Canonical edges come from COYOTE and
+   * have none — they are not rows anyone can delete from here. */
+  id?: string;
+  /** True for an edge declared by COYOTE itself: read-only, never removable in the UI. */
+  canon?: boolean;
   a: string;
   b: string;
   /** the section that declares this edge */
@@ -64,3 +81,13 @@ export type Link = {
 export type TagKey = "screens" | "todos" | "blockers" | "drops" | "subs";
 
 export type Nodes = Record<string, BrainNode>;
+
+/** The whole arrangement. Built server-side from canonical + PM data (lib/adapter.ts) and
+ * handed to BrainProvider, which is why it lives here and not in the client module. */
+export type Model = {
+  nodes: Nodes;
+  order: string[];
+  links: Link[];
+  /** unrouted is a state, not an error */
+  unrouted: Drop[];
+};
