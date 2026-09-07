@@ -8,5 +8,8 @@ next-env.d.ts
 .env*.local
 !.env.example
 debug-*.png
+wires-*.png
+dev-*.log
+dev-*.err
 .vercel
 .env*
