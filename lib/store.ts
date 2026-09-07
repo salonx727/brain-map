@@ -40,7 +40,7 @@ type SavedMap = {
 
 export type LoadResult =
   | { ok: true; nodes: Nodes; order: string[]; links: Link[] | null; unrouted: Drop[] | null }
-  /** nothing saved yet — the sample map may be seeded */
+  /** nothing saved yet — the cards stand at their seed positions, empty */
   | { ok: false; note: "" }
   /** a save exists but cannot be used. Say so, change nothing. */
   | { ok: false; note: string };

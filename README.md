@@ -17,7 +17,7 @@ npm run verify   # drives a real browser: write, reload, then read
 | Path | What lives there |
 | --- | --- |
 | `app/globals.css` | canon tokens and every component style |
-| `lib/seed.ts` | the transcribed sheet: 13 nodes, 21 edges, sample content |
+| `lib/seed.ts` | the transcribed sheet: 13 nodes, 21 edges |
 | `lib/store.ts` | localStorage persistence |
 | `lib/graph.ts` | counts, collision, free-slot placement, image intake |
 | `components/BrainSurface.tsx` | the flat map: pan, zoom, drag, lock |

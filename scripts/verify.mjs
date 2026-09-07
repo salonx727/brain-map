@@ -68,8 +68,29 @@ async function newPage(errors) {
     names.length + " names"
   );
 
+  /* a first visit invents nothing: the cards stand empty at their seed places */
   const hint = await page.locator("#lockstate .hint").textContent();
-  check("port · sample notice states itself", /SAMPLE DATA/.test(hint || ""), hint);
+  check(
+    "port · the hint stays on one line",
+    /^DOUBLE-TAP FIELD TO LOCK$/.test((hint || "").trim()),
+    hint
+  );
+  /* the notice used to wrap to three lines and stretch the pill open */
+  const hintH = await page.evaluate(() =>
+    Math.round(document.querySelector("#lockstate .hint").getBoundingClientRect().height)
+  );
+  check("port · the hint does not wrap the pill open", hintH < 20, hintH + "px tall");
+
+  const states = await page.locator(".node .n-meta").allTextContents();
+  check(
+    "port · every card starts untouched",
+    states.length === 13 && states.every((s) => s === "UNTOUCHED"),
+    [...new Set(states)].join(", ")
+  );
+  const marks = await page.locator(".marks i").count();
+  check("port · an empty map carries no attention marks", marks === 0, marks + " marks");
+  const filled = await page.locator(".node .ctl:not(.empty)").count();
+  check("port · every control starts dim", filled === 0, filled + " filled");
 
   /* --- a to-do survives a reload, and so does its citation --- */
   await page.locator("#n-n1").click();

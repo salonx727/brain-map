@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { WIRES, buildSeedNodes, seedSample } from "./seed";
+import { WIRES, buildSeedNodes } from "./seed";
 import { counts, isEmpty, linksOf } from "./graph";
 import { clearStore, loadMap, saveMap } from "./store";
 import type { BrainNode, Drop, Link, Nodes, Shape } from "./types";
@@ -28,7 +28,7 @@ type Trash = {
   at: number;
 };
 
-function initModel(): { model: Model; note: string; sampleLoaded: boolean } {
+function initModel(): { model: Model; note: string } {
   const { nodes, order, byRef } = buildSeedNodes();
   const links: Link[] = [];
   WIRES.forEach((w) => {
@@ -44,13 +44,11 @@ function initModel(): { model: Model; note: string; sampleLoaded: boolean } {
     model.order = res.order;
     if (res.links) model.links = res.links;
     if (res.unrouted) model.unrouted = res.unrouted;
-    return { model, note: "", sampleLoaded: false };
+    return { model, note: "" };
   }
-  /* Nothing usable was read. Positions are untouched seed positions — that is
-     placement, not reset. Sample content fills the cards so the surface is
-     legible on a first visit; RESET clears it. */
-  seedSample(nodes);
-  return { model, note: res.note, sampleLoaded: true };
+  /* Nothing usable was read. The cards keep their seed positions and stand
+     empty — that is placement, not reset. Nothing is invented to fill them. */
+  return { model, note: res.note };
 }
 
 export type Brain = {
@@ -62,7 +60,6 @@ export type Brain = {
   saveNow: () => void;
   saveSoon: () => void;
   storeNote: string;
-  sampleLoaded: boolean;
   savedFlash: boolean;
 
   addNode: (opts: {
@@ -90,7 +87,7 @@ export function useBrain(): Brain {
 }
 
 export function BrainProvider({ children }: { children: React.ReactNode }) {
-  const boot = useRef<{ model: Model; note: string; sampleLoaded: boolean } | null>(null);
+  const boot = useRef<{ model: Model; note: string } | null>(null);
   if (!boot.current) boot.current = initModel();
 
   const modelRef = useRef<Model>(boot.current.model);
@@ -99,7 +96,6 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
 
   const [version, setVersion] = useState(0);
   const [storeNote, setStoreNote] = useState(boot.current.note);
-  const [sampleLoaded] = useState(boot.current.sampleLoaded);
   const [savedFlash, setSavedFlash] = useState(false);
   const [undone, setUndone] = useState<{ ref: string; quiet: boolean } | null>(null);
 
@@ -228,7 +224,6 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
       saveNow,
       saveSoon,
       storeNote,
-      sampleLoaded,
       savedFlash,
       addNode,
       removeNode,
@@ -243,7 +238,6 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
       saveNow,
       saveSoon,
       storeNote,
-      sampleLoaded,
       savedFlash,
       addNode,
       removeNode,

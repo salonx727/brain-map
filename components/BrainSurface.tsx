@@ -26,7 +26,7 @@ export default function BrainSurface() {
 
 function Surface() {
   const brain = useBrain();
-  const { model, bump, saveNow, storeNote, sampleLoaded, savedFlash } = brain;
+  const { model, bump, saveNow, storeNote, savedFlash } = brain;
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<number | null>(null);
@@ -385,9 +385,7 @@ function Surface() {
   let lockHint: string;
   if (copyNote) lockHint = copyNote;
   else if (storeNote) lockHint = storeNote;
-  else if (sampleLoaded && !moved && !locked) {
-    lockHint = "SAMPLE DATA · CANON TEXT, NOT PROJECT STATUS · RESET CLEARS IT";
-  } else if (locked) lockHint = "DOUBLE-TAP FIELD TO UNLOCK";
+  else if (locked) lockHint = "DOUBLE-TAP FIELD TO UNLOCK";
   else if (moved) lockHint = moved + " MOVED · DOUBLE-TAP FIELD TO LOCK";
   else lockHint = "DOUBLE-TAP FIELD TO LOCK";
 

@@ -1,4 +1,4 @@
-import type { Item, Nodes, NodeState, Shape, TagKey } from "./types";
+import type { Nodes, NodeState, Shape, TagKey } from "./types";
 
 /* Layout transcribed from the sheet. Nothing added to it.
    Composition is symmetric about x = 0. Column pitch 410 clears a 74px chip
@@ -110,88 +110,4 @@ export function buildSeedNodes(): { nodes: Nodes; order: string[]; byRef: Record
     order.push(id);
   });
   return { nodes, order, byRef };
-}
-
-/* ---------------- sample data ----------------
-   Loaded ONLY when there is no saved map, so it can never overwrite work.
-   Every line is drawn from the §35 spine contracts — canon text, not invented
-   project status. RESET clears it. */
-function t(text: string, sec?: string, done?: boolean): Item {
-  return { text, done: !!done, sec: sec || "" };
-}
-
-type Sample = { state?: NodeState; todos?: Item[]; blockers?: Item[]; subs?: Item[] };
-
-const SAMPLE: Record<string, Sample> = {
-  n0: {
-    state: "IN BUILD",
-    todos: [
-      t("Confirm session_services and session_retail reach EMPIRE", "§35.2 EMITS"),
-      t("client_type NEW_CLIENT handoff to MUSE", "§35.4 DOWNSTREAM"),
-      t("Photos and back bar arriving", "§35.2 EMITS", true),
-    ],
-    blockers: [
-      t("badge_awarded write is the only backward edge — confirm it is safe", "§35.8 WRITES"),
-    ],
-    subs: [t("Session record assembler")],
-  },
-  n1: {
-    state: "IN BUILD",
-    todos: [t("Economic layer only — nothing else downstream", "§35.3 DOWNSTREAM")],
-  },
-  n2: {
-    state: "UNTOUCHED",
-    subs: [t("Growth Path renderer"), t("New-client detection")],
-  },
-  n4: {
-    state: "BLOCKED",
-    todos: [
-      t("Ramp-copy handoff to TAG needs the attribution chain wired", "§35.6 DOWNSTREAM"),
-      t("Magic Selfie Loop arrives from THE INK — confirm the trigger", "§35.7 DOWNSTREAM"),
-      t("CVM tier reads the old post-activity shape", "§35.6 DOWNSTREAM"),
-      t("Post activity feed shape agreed", "§35.6 DOWNSTREAM", true),
-    ],
-    blockers: [
-      t("TAG findings are not reaching SIGNAL", "§35.5 READS"),
-      t("Attribution chain unresolved", "§35.8 READS"),
-    ],
-    subs: [t("Ramp copy service")],
-  },
-  n5: {
-    state: "IN BUILD",
-    todos: [t("care_instructions arriving from GHOST NOTES", "§35.2 EMITS")],
-    blockers: [t("Client nodes downstream of NEXUS undefined", "§35.7 DOWNSTREAM")],
-  },
-  n9: {
-    state: "IN BUILD",
-    todos: [t("Network position calculation", "§35.11 DOWNSTREAM")],
-    subs: [t("Attribution chain reader")],
-  },
-  n10: {
-    state: "BLOCKED",
-    blockers: [
-      t("Eight upstream engines land here — none of the contracts are confirmed", "§35.12"),
-      t("Tribe colour on every node depends on SKINZ, disabled at launch", "§35.9"),
-    ],
-  },
-  n11: {
-    state: "DONE",
-    todos: [t("Client records written at import", "§40", true)],
-  },
-  n12: {
-    state: "DONE",
-    todos: [t("Booking created fires GHOST NOTES", "§35.2 TRIGGER", true)],
-  },
-};
-
-export function seedSample(nodes: Nodes): void {
-  Object.keys(SAMPLE).forEach((id) => {
-    const d = nodes[id];
-    if (!d) return;
-    const sv = SAMPLE[id];
-    d.state = sv.state || d.state;
-    d.todos = sv.todos || [];
-    d.blockers = sv.blockers || [];
-    d.subs = sv.subs || [];
-  });
 }
