@@ -91,7 +91,7 @@ export default function ListEditor({
               <button
                 className={"mark" + (item.done ? " done" : "")}
                 aria-label={item.done ? "Mark not done" : "Mark done"}
-                disabled={!item.id}
+                disabled={!item.id || item.canon}
                 onClick={() => {
                   if (!item.id) return;
                   const was = item.done;
@@ -108,19 +108,23 @@ export default function ListEditor({
             ) : null}
 
             <div className="lbody">
-              <EditableLine
-                text={item.text}
-                onInput={(value) => {
-                  item.text = value;
-                  bump();
-                }}
-                onBlur={() => {
-                  if (!item.id) return;
-                  const next = item.text.trim();
-                  if (!next) return;
-                  persist(() => updateItemTitleAction(item.id as string, next));
-                }}
-              />
+              {item.canon ? (
+                <div>{item.text}</div>
+              ) : (
+                <EditableLine
+                  text={item.text}
+                  onInput={(value) => {
+                    item.text = value;
+                    bump();
+                  }}
+                  onBlur={() => {
+                    if (!item.id) return;
+                    const next = item.text.trim();
+                    if (!next) return;
+                    persist(() => updateItemTitleAction(item.id as string, next));
+                  }}
+                />
+              )}
               {item.sec ? <div className="sub">{item.sec}</div> : null}
             </div>
 
@@ -134,24 +138,32 @@ export default function ListEditor({
               </button>
             ) : null}
 
-            <button
-              className="minus"
-              aria-label="Remove"
-              onClick={() => {
-                const priorList = list.slice();
-                d[field] = list.filter((_, k) => k !== i);
-                bump();
-                if (!item.id) return; // never reached the database; nothing to delete
-                persist(
-                  () => deleteItemAction(item.id as string),
-                  () => {
-                    d[field] = priorList;
-                  },
-                );
-              }}
-            >
-              <span />
-            </button>
+            {/* A canon item has no pm_items row to delete and would return on the next
+                publish, so it is labelled rather than given a button that cannot work. */}
+            {item.canon ? (
+              <span className="cap" title="Declared by COYOTE">
+                CANON
+              </span>
+            ) : (
+              <button
+                className="minus"
+                aria-label="Remove"
+                onClick={() => {
+                  const priorList = list.slice();
+                  d[field] = list.filter((_, k) => k !== i);
+                  bump();
+                  if (!item.id) return; // never reached the database; nothing to delete
+                  persist(
+                    () => deleteItemAction(item.id as string),
+                    () => {
+                      d[field] = priorList;
+                    },
+                  );
+                }}
+              >
+                <span />
+              </button>
+            )}
           </div>
         ))
       )}

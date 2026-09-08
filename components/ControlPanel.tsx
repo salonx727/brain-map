@@ -68,6 +68,28 @@ export default function ControlPanel({
   const mine = linksOf(model.links, d.id);
   const removable = isEmpty(d.id);
 
+  /**
+   * Every other card on the map, not a filtered subset.
+   *
+   * Hiding engines from a canonical card made this look empty — after the placeholder
+   * purge the only remaining PM card was "NEW SUB-NODE", so the dropdown read as broken.
+   * Already-wired and canon-to-canon rows stay in the list so the roster is complete;
+   * they are not pickable. A new PM wire still needs one PM endpoint (the DB trigger
+   * in 0002_pm_layer.sql) — two engines are joined by COYOTE or not at all.
+   */
+  const wireOptions = model.order
+    .filter((oid) => oid !== d.id && model.nodes[oid])
+    .map((oid) => {
+      const other = model.nodes[oid];
+      const label = (other.ref + "  " + (other.name || "")).trim();
+      const wired = hasLink(model.links, d.id, oid);
+      const bothCanon = !editable && !canEditNode(oid);
+      if (wired) return { id: oid, label, disabled: true, reason: "WIRED" };
+      if (bothCanon) return { id: oid, label, disabled: true, reason: "COYOTE" };
+      return { id: oid, label, disabled: false, reason: "" };
+    });
+  const wireTargets = wireOptions.filter((o) => !o.disabled);
+
   let tally = "";
   if (tab === 1) {
     tally =
@@ -313,23 +335,16 @@ export default function ControlPanel({
               onChange={(e) => setWireTo(e.target.value)}
             >
               <option value="">Wire to…</option>
-              {/* A wire needs at least one PM endpoint — a database trigger enforces it,
-                  not this list. Two canonical engines are joined by COYOTE or not at all,
-                  so from a canonical card only PM cards are offered rather than letting
-                  the pick fail on submit. */}
-              {model.order
-                .filter((oid) => oid !== d.id && !hasLink(model.links, d.id, oid))
-                .filter((oid) => editable || canEditNode(oid))
-                .map((oid) => (
-                  <option value={oid} key={oid}>
-                    {model.nodes[oid].name || model.nodes[oid].ref}
-                  </option>
-                ))}
+              {wireOptions.map((o) => (
+                <option value={o.id} key={o.id} disabled={o.disabled}>
+                  {o.label + (o.reason ? "  ·  " + o.reason : "")}
+                </option>
+              ))}
             </select>
             <button
               className="act"
               onClick={() => {
-                if (!wireTo) return;
+                if (!wireTo || !wireTargets.some((t) => t.id === wireTo)) return;
                 const link: Link = { a: d.id, b: wireTo };
                 model.links.push(link);
                 setWireTo("");
@@ -349,6 +364,12 @@ export default function ControlPanel({
               WIRE
             </button>
           </div>
+
+          {!editable ? (
+            <div className="cap" style={{ marginTop: -8, marginBottom: 12 }}>
+              EVERY CARD IS LISTED · WIRED AND COYOTE PAIRS ARE VISIBLE, NOT PICKABLE
+            </div>
+          ) : null}
 
           {!mine.length ? (
             <div className="none">Not wired to anything.</div>

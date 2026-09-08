@@ -101,6 +101,29 @@ export function buildModel(
       seed?.sec ?? node.canonRefs[0]?.value ?? "",
       "canon",
     );
+    // §15's blockers and §00a's open questions, already extracted and attributed to an
+    // engine by the parser and carried through field_states. They were being published
+    // and then dropped on the floor here, so the map showed only hand-typed items and
+    // canon's own list of what is in the way was invisible.
+    //
+    // A question goes in TO DO rather than BLK on purpose: §00a is a queue of things
+    // awaiting an answer, not things declared to be blocking. Both are read-only.
+    if (node.kind === "engine") {
+      const target = nodes[node.nodeKey];
+      for (const b of node.blockers) {
+        target.blockers.push({ text: b.text, done: false, sec: b.sourceSection, canon: true });
+      }
+      for (const q of node.openQuestions) {
+        const prefix = [q.qId, q.status].filter(Boolean).join(" · ");
+        target.todos.push({
+          text: q.text,
+          done: (q.status ?? "").toUpperCase() === "CLOSED",
+          sec: prefix ? `${q.sourceSection} · ${prefix}` : q.sourceSection,
+          canon: true,
+        });
+      }
+    }
+
     order.push(node.nodeKey);
   }
 

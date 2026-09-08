@@ -20,6 +20,12 @@ export type Item = {
   text: string;
   done: boolean;
   sec: string;
+  /**
+   * Declared by COYOTE (§15 blockers, §00a open questions) rather than typed here, so it
+   * is shown and never edited: it has no pm_items row to address, and the next publish
+   * would restore it anyway. Same posture as a canon wire — see adapter.ts.
+   */
+  canon?: boolean;
 };
 
 /** A UI slot holds an image and nothing else. slot_index matters. */
