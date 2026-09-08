@@ -8,12 +8,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { counts, isEmpty, linksOf } from "./graph";
+import { counts, hasLink, isEmpty, linksOf } from "./graph";
 import {
   createNodeLinkAction,
   createPmNodeAction,
   deletePmNodeAction,
   getSignedFileUrlAction,
+  setPmNodeParentAction,
   uploadFileAction,
   upsertLayoutPositionAction,
 } from "@/app/actions/pm";
@@ -80,6 +81,12 @@ export type Brain = {
     wireTo?: string | null;
   }) => Promise<string | null>;
   removeNode: (id: string, quiet: boolean) => void;
+  /**
+   * Nests an already-existing card under another, instead of createPmNode's "type a
+   * label, get a new one." No-op for a canonical childId — see canEditNode: it has no PM
+   * row for parent_node_key to live on.
+   */
+  attachExistingAsSub: (childId: string, parentId: string) => void;
   /** What was just removed, for the standing notice. Removal is permanent — see removeNode. */
   removed: { ref: string; quiet: boolean } | null;
   reset: () => void;
@@ -306,6 +313,43 @@ export function BrainProvider({
     [bump, persist],
   );
 
+  /* ---------------- nest an existing card ----------------
+     The other half of "Add a sub-node": that flow only ever creates a brand-new card.
+     This one points an existing, already-created card's parent_node_key at d.id instead —
+     same two writes as addNode's wireTo branch (parent + a real link), just against a row
+     that already exists rather than one this call is minting. */
+  const attachExistingAsSub = useCallback(
+    (childId: string, parentId: string) => {
+      const m = modelRef.current;
+      const child = m.nodes[childId];
+      const parent = m.nodes[parentId];
+      // Only a PM-created card has a pm_nodes row for parent_node_key to live on — a
+      // canonical card's identity is COYOTE's, same boundary canEditNode already draws.
+      if (!child || !parent || child.origin !== "user" || childId === parentId) return;
+
+      const priorLinks = m.links.slice();
+      const alreadyLinked = hasLink(m.links, childId, parentId);
+      if (!alreadyLinked) {
+        m.links.push({ a: childId, b: parentId, fromPromote: true });
+      }
+      bump();
+
+      persist(
+        async () => {
+          await setPmNodeParentAction(childId, parentId);
+          if (alreadyLinked) return;
+          const row = await createNodeLinkAction({ fromNodeKey: childId, toNodeKey: parentId });
+          const added = m.links.find((l) => l.a === childId && l.b === parentId && !l.id);
+          if (added) added.id = row.id;
+        },
+        () => {
+          m.links = priorLinks;
+        },
+      );
+    },
+    [bump, persist],
+  );
+
   /* Pressed on purpose, never automatic. Everything lives in the database now, so this
      re-reads it — which discards nothing except a failed edit still sitting on screen. */
   const reset = useCallback(() => {
@@ -330,13 +374,14 @@ export function BrainProvider({
       addFiles,
       addNode,
       removeNode,
+      attachExistingAsSub,
       removed,
       reset,
       isEmpty: isEmptyCb,
       canEditNode,
       layoutId,
     }),
-    [bump, version, persist, storeNote, savedFlash, addFiles, addNode, removeNode, removed, reset, isEmptyCb, canEditNode, layoutId],
+    [bump, version, persist, storeNote, savedFlash, addFiles, addNode, removeNode, attachExistingAsSub, removed, reset, isEmptyCb, canEditNode, layoutId],
   );
 
   return <BrainCtx.Provider value={value}>{children}</BrainCtx.Provider>;

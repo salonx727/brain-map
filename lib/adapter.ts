@@ -227,6 +227,25 @@ export function buildModel(
     links.push({ id: l.id, a: l.fromNodeKey, b: l.toNodeKey, why: l.citation ?? undefined });
   }
 
+  // A PM node's parent_node_key is nesting, not a wire — createPmNode never requires a
+  // pm_node_links row alongside it (see pmWriter.ts's own comment on the column). Most of
+  // the time the UI's own promote flow adds the real link too, but wherever it doesn't
+  // (a failed link write, a node nested some other way) the parent relationship still
+  // deserves to be seen rather than silently dropped, which is what happened before this:
+  // buildModel never read parentNodeKey at all. Synthesized, never persisted — no `id`,
+  // so nothing here is a row the UI could delete.
+  for (const pmNode of pm.nodes) {
+    if (!pmNode.parentNodeKey) continue;
+    if (!nodes[pmNode.nodeKey] || !nodes[pmNode.parentNodeKey]) continue;
+    const alreadyWired = links.some(
+      (l) =>
+        (l.a === pmNode.nodeKey && l.b === pmNode.parentNodeKey) ||
+        (l.a === pmNode.parentNodeKey && l.b === pmNode.nodeKey),
+    );
+    if (alreadyWired) continue;
+    links.push({ a: pmNode.nodeKey, b: pmNode.parentNodeKey, containment: true });
+  }
+
   const unrouted: Drop[] = pm.files
     .filter((f) => !f.nodeKey)
     .map((f) => ({

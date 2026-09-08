@@ -82,6 +82,13 @@ export type Link = {
   back?: boolean;
   /** the wire a promoted sub-node keeps to its parent */
   fromPromote?: boolean;
+  /**
+   * Synthesized from a PM node's parent_node_key, not a pm_node_links row — so it has no
+   * `id` and nothing to delete. PM-only: §42.7 forbids drawing a canonical module's
+   * containment as a wire, and this flag never applies to a `canon` link. Field3D draws it
+   * distinctly (dim, no light-pulse) so nesting reads as nesting, not as a real data-flow edge.
+   */
+  containment?: boolean;
 };
 
 export type TagKey = "screens" | "todos" | "blockers" | "drops" | "subs";

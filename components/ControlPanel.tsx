@@ -40,7 +40,7 @@ export default function ControlPanel({
   onOpenCard: (id: string, tab: number | null) => void;
   onShowOnField: (id: string) => void;
 }) {
-  const { model, bump, persist, addFiles, addNode, removeNode, canEditNode } = useBrain();
+  const { model, bump, persist, addFiles, addNode, removeNode, attachExistingAsSub, canEditNode } = useBrain();
   const intake = useIntake();
 
   /**
@@ -79,10 +79,17 @@ export default function ControlPanel({
     (oid) => hasLink(model.links, d.id, oid),
   );
 
+  /**
+   * Same roster as wireOptions, narrowed to PM-created cards only — a canonical card has
+   * no pm_nodes row for parent_node_key to live on (attachExistingAsSub is a no-op for
+   * one), so offering it here would be a pickable option that silently does nothing.
+   */
+  const subAttachOptions = wireOptions.filter((o) => model.nodes[o.id]?.origin === "user");
+
   function applyWire(targetId: string) {
     if (retargetId) {
       const link = model.links.find((l) => l.id === retargetId);
-      if (!link || link.canon) return;
+      if (!link || link.canon || link.containment) return;
       const movingA = otherEnd(link, d.id) === link.a;
       const prior = movingA ? link.a : link.b;
       if (movingA) link.a = targetId;
@@ -252,24 +259,37 @@ export default function ControlPanel({
       {tab === 2 ? <ListEditor d={d} field="blockers" placeholder="Add a blocker" /> : null}
 
       {tab === 4 ? (
-        <ListEditor
-          d={d}
-          field="subs"
-          placeholder="Add a sub-node"
-          onPromote={(item, i) => {
-            const parent = d.id;
-            const label = item.text;
-            const spot = freeSpot(model.nodes, model.order, parent, "box");
-            const prior = d.subs.slice();
-            d.subs = d.subs.filter((_, k) => k !== i);
-            bump();
-            void addNode({ x: spot.x, y: spot.y, name: label, wireTo: parent }).then((id) => {
-              if (id) return;
-              d.subs = prior; // the card was never created, so the line stays where it was
+        <>
+          <ListEditor
+            d={d}
+            field="subs"
+            placeholder="Add a sub-node"
+            onPromote={(item, i) => {
+              const parent = d.id;
+              const label = item.text;
+              const spot = freeSpot(model.nodes, model.order, parent, "box");
+              const prior = d.subs.slice();
+              d.subs = d.subs.filter((_, k) => k !== i);
               bump();
-            });
-          }}
-        />
+              void addNode({ x: spot.x, y: spot.y, name: label, wireTo: parent }).then((id) => {
+                if (id) return;
+                d.subs = prior; // the card was never created, so the line stays where it was
+                bump();
+              });
+            }}
+          />
+
+          {/* "Add a sub-node" above only ever types a brand-new card. This is the other
+              half: nest a card that already exists, instead of making a duplicate. */}
+          <div className="lab" style={{ marginTop: 18 }}>
+            ATTACH AN EXISTING CARD AS A SUB
+          </div>
+          <WirePicker
+            options={subAttachOptions}
+            onPick={(targetId) => attachExistingAsSub(targetId, d.id)}
+            placeholder="Search cards to nest under this one…"
+          />
+        </>
       ) : null}
 
       {tab === 3 ? (
@@ -393,6 +413,10 @@ export default function ControlPanel({
                       <span className="cap" title="Declared by COYOTE">
                         CANON
                       </span>
+                    ) : l.containment ? (
+                      <span className="cap" title="Nesting, derived from this card's parent — not a wire to delete">
+                        NESTED
+                      </span>
                     ) : (
                       <span style={{ display: "flex", gap: 6 }}>
                         <button className="act" style={{ padding: "6px 10px", fontSize: 9 }} onClick={() => setRetargetId(l.id ?? null)}>
@@ -419,7 +443,7 @@ export default function ControlPanel({
                       </span>
                     )}
                   </div>
-                  {l.canon ? (
+                  {l.canon || l.containment ? (
                     l.why ? (
                       <div className="cap" style={{ marginTop: 6 }}>
                         {l.why}

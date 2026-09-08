@@ -38,8 +38,9 @@ export function isEmpty(nodes: Nodes, links: Link[], id: string): boolean {
   const noContent = counts(d).every((c) => c === 0);
   if (d.origin === "user") {
     /* a card you just made: the wire back to its parent does not count —
-       changing your mind must stay one touch */
-    const foreign = linksOf(links, id).filter((l) => !l.fromPromote);
+       changing your mind must stay one touch. Same for a synthesized containment
+       edge, which is not a row to begin with. */
+    const foreign = linksOf(links, id).filter((l) => !l.fromPromote && !l.containment);
     return noContent && foreign.length === 0;
   }
   return false;

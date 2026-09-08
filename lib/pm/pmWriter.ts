@@ -105,6 +105,25 @@ export async function renamePmNode(client: SupabaseClient, nodeKey: string, labe
   return pmNodeFromRow(row);
 }
 
+/**
+ * Nests an existing PM node under a new parent — the "attach an existing card as a sub"
+ * path, as opposed to createPmNode's "type a label, get a brand-new card" path. Only ever
+ * targets a row in this table: a canonical node has no pm_nodes row to update, so
+ * re-parenting one is refused by the same "no row, no update" mechanism as renamePmNode,
+ * not a duplicated kind-check here. parentNodeKey is not validated against either table
+ * for the same reason createPmNode doesn't — see that function's own comment.
+ */
+export async function setPmNodeParent(client: SupabaseClient, nodeKey: string, parentNodeKey: string | null, updatedBy?: string | null): Promise<PmNode> {
+  const { data, error } = await client
+    .from("pm_nodes")
+    .update({ parent_node_key: parentNodeKey, updated_by: updatedBy ?? null, updated_at: new Date().toISOString() })
+    .eq("node_key", nodeKey)
+    .select()
+    .single();
+  const row = unwrap({ data, error }, "setPmNodeParent");
+  return pmNodeFromRow(row);
+}
+
 export async function createItem(client: SupabaseClient, input: { kind: "todo" | "blocker"; title: string; nodeKey?: string | null; detail?: string; ownerId?: string | null; createdBy?: string | null }): Promise<PmItem> {
   const { data, error } = await client
     .from("pm_items")

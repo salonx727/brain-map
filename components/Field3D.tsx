@@ -239,14 +239,20 @@ export default function Field3D({
         const path: Proj[] = [];
         for (let k = 0; k <= SEG; k++) path.push(project3(bez3(A, B, k / SEG), W, H));
         ctx.lineCap = "round";
-        ctx.strokeStyle = rgba(lit ? (l.back ? 0.75 : 0.34) : 0.05);
+        // Containment is nesting, not data-flow — a card you filed under another, not a
+        // signal moving between them. Dotted and dim so it reads as structure in the
+        // background rather than competing with a real wire for attention, and it never
+        // gets the light-pulse below: there is nothing flowing to animate.
+        ctx.strokeStyle = l.containment ? rgba(lit ? 0.22 : 0.04) : rgba(lit ? (l.back ? 0.75 : 0.34) : 0.05);
         ctx.lineWidth = l.back ? 1.6 : 1;
-        ctx.setLineDash(l.back ? [7, 5] : []);
+        ctx.setLineDash(l.containment ? [2, 5] : l.back ? [7, 5] : []);
         ctx.beginPath();
         ctx.moveTo(path[0].x, path[0].y);
         for (let k = 1; k <= SEG; k++) ctx.lineTo(path[k].x, path[k].y);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        if (l.containment) return;
 
         /* light travels source to target — direction, drawn */
         const ph = (t * 0.22 + i * 0.11) % 1;

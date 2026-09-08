@@ -67,6 +67,14 @@ export async function renamePmNodeAction(nodeKey: string, label: string, updated
   return node;
 }
 
+/** Re-parents an existing PM node — picking an existing card as a sub, rather than typing a new one. Throws for a canonical node_key, same as renamePmNodeAction: see pmWriter.setPmNodeParent's own header comment. */
+export async function setPmNodeParentAction(nodeKey: string, parentNodeKey: string | null, updatedBy?: string | null) {
+  const client = createPmServiceClient();
+  const node = await pmWriter.setPmNodeParent(client, nodeKey, parentNodeKey, updatedBy);
+  revalidatePath("/");
+  return node;
+}
+
 export async function createNodeLinkAction(input: { fromNodeKey: string; toNodeKey: string; citation?: string | null; createdBy?: string | null }) {
   const client = createPmServiceClient();
   const link = await pmWriter.createNodeLink(client, input);
