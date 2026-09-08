@@ -40,7 +40,7 @@ export default function ControlPanel({
   onOpenCard: (id: string, tab: number | null) => void;
   onShowOnField: (id: string) => void;
 }) {
-  const { model, bump, persist, addFiles, addNode, removeNode, isEmpty, canEditNode } = useBrain();
+  const { model, bump, persist, addFiles, addNode, removeNode, canEditNode } = useBrain();
   const intake = useIntake();
 
   /**
@@ -54,21 +54,17 @@ export default function ControlPanel({
 
   const [retargetId, setRetargetId] = useState<string | null>(null);
   const [over, setOver] = useState(false);
-  const [addArmed, setAddArmed] = useState(false);
   const [delArmed, setDelArmed] = useState(false);
-  const addTimer = useRef<number | null>(null);
   const delTimer = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
-      if (addTimer.current) window.clearTimeout(addTimer.current);
       if (delTimer.current) window.clearTimeout(delTimer.current);
     };
   }, []);
 
   const c = counts(d);
   const mine = linksOf(model.links, d.id);
-  const removable = isEmpty(d.id);
 
   /**
    * Every other card on the map, not a filtered subset. Built from nodes and order
@@ -137,11 +133,6 @@ export default function ControlPanel({
   } else if (tab === 0) {
     tally = c[0] + " OF 4 SLOTS";
   }
-
-  const disarmAdd = () => {
-    setAddArmed(false);
-    if (addTimer.current) window.clearTimeout(addTimer.current);
-  };
 
   return (
     <div id="panel" role="dialog" aria-label="Node control surface">
@@ -462,19 +453,6 @@ export default function ControlPanel({
 
           <button
             className="act"
-            style={{ marginTop: 6, marginRight: 6 }}
-            onClick={() => {
-              const spot = freeSpot(model.nodes, model.order, d.id, "box");
-              void addNode({ x: spot.x, y: spot.y, wireTo: d.id }).then((id) => {
-                if (id) onOpenCard(id, 4);
-              });
-            }}
-          >
-            ADD WIRED CARD
-          </button>
-
-          <button
-            className="act"
             style={{ marginTop: 6 }}
             onClick={() => onShowOnField(d.id)}
           >
@@ -483,55 +461,24 @@ export default function ControlPanel({
         </div>
       ) : null}
 
-      {/* ADD — asks the one question that matters before anything is made */}
       <div style={{ paddingTop: 6 }}>
         <button
-          className={"act" + (addArmed ? " armed" : "")}
+          className="act armed"
           style={{ width: "100%", padding: 14, fontSize: 10 }}
           onClick={() => {
-            if (addArmed) {
-              disarmAdd();
-              return;
-            }
-            setAddArmed(true);
-            addTimer.current = window.setTimeout(() => setAddArmed(false), 8000);
+            const spot = freeSpot(model.nodes, model.order, d.id, "box");
+            void addNode({ x: spot.x, y: spot.y, wireTo: d.id }).then((id) => {
+              if (id) onOpenCard(id, null);
+            });
           }}
         >
-          {addArmed ? "WIRED TO THIS CARD, OR INDEPENDENT?" : "ADD A CARD"}
+          ADD A CARD · WIRED TO THIS ONE
         </button>
-
-        {addArmed ? (
-          <div id="addq" style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            {([["WIRED TO THIS CARD", true], ["INDEPENDENT", false]] as const).map((opt) => (
-              <button
-                key={opt[0]}
-                className="act"
-                style={{ flex: 1, padding: "14px 10px", fontSize: 9.5 }}
-                onClick={() => {
-                  const parent = d.id;
-                  const spot = freeSpot(model.nodes, model.order, parent, "box");
-                  disarmAdd();
-                  void addNode({
-                    x: spot.x,
-                    y: spot.y,
-                    wireTo: opt[1] ? parent : null,
-                  }).then((id) => {
-                    /* the new card opens so it can be named */
-                    if (id) onOpenCard(id, null);
-                  });
-                }}
-              >
-                {opt[0]}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </div>
 
-      {/* Canonical cards have no delete path anywhere in the PM layer — an engine exists
-          because COYOTE says so, and removing it here would mean nothing on the next
-          publish. Only PM-created cards can be taken away. */}
-      {!removable && editable ? (
+      {/* Canonical cards have no delete path — an engine exists because COYOTE says so.
+          Only PM-created cards can be taken away, empty or not. */}
+      {editable ? (
         <div style={{ paddingTop: 6 }}>
           <button
             className={"act" + (delArmed ? " armed" : "")}
