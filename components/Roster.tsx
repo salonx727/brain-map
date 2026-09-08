@@ -17,14 +17,10 @@ export default function Roster({
   mode,
   onClose,
   onHubTab,
-  provider,
-  setProvider,
 }: {
   mode: RosterMode;
   onClose: () => void;
   onHubTab: (tab: 0 | 1) => void;
-  provider: string | null;
-  setProvider: (p: string | null) => void;
 }) {
   const { model, bump, persist } = useBrain();
   const intake = useIntake();
@@ -162,7 +158,7 @@ export default function Roster({
                 </div>
               </>
             ) : (
-              <AiPanel provider={provider} setProvider={setProvider} />
+              <AiPanel />
             )}
           </>
         )}

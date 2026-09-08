@@ -62,6 +62,23 @@ map with nothing on it rather than a map that could not be read. The `sourceErro
 carried correctly the whole time; the pages showed it, but the AI hub's `buildAiContext`
 was dropping it, which is fixed in the same commit as this note.
 
+`0007_publish_force_flag.sql` (2026-09-07) — adds `p_force` to `publish_canonical_snapshot`
+so a parser change can republish a byte-identical source. See the file's own header.
+
+`0008_ai_bridge.sql` (2026-09-08) — `ai_threads` / `ai_messages`, the queue that lets the
+map's AI hub talk to the CommandOS agent, plus `claim_ai_message()`. Unlike every other
+table here, **neither grants anything to anon**: they hold instructions for a machine
+rather than a picture of a graph, and the map has no authentication in front of it yet, so
+all access goes through Server Actions holding the service-role key. `claim_ai_message()`
+uses `for update skip locked` so two bridge processes cannot answer the same message twice.
+
+**Applied and live** (2026-09-08, same project, `scripts/apply-migration.mjs`): verified
+end to end with the bridge running — `scripts/verify-brain-chat.mjs` (a vault question
+answered with file-and-line citations), `scripts/verify-brain-file.mjs` (a file uploaded
+in the browser, read off disk by the agent), and `scripts/verify-brain-supabase.mjs` (the
+agent reading the live snapshot back out of Postgres). Probe rows removed afterwards with
+`scripts/purge-bridge-probes.ts`.
+
 **The lesson worth keeping:** this file is the only record of what is actually applied,
 and it is hand-maintained. An entry missing here is indistinguishable from a migration
 that was never written. Add the "Applied and live" line in the same session you run the

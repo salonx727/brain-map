@@ -623,6 +623,68 @@ select.f option {
   background: #101010;
 }
 
+/* ── The AI hub's conversation with the brain ─────────────────────────────────
+   Scrolls on its own rather than growing the roster card, so the composer stays
+   where the thumb expects it however long the thread gets. */
+.chatlog {
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.chatlog .turn {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--stroke);
+}
+.chatlog .turn:last-of-type {
+  border-bottom: none;
+}
+.chatlog .who {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--text-3);
+  margin-bottom: 5px;
+}
+.chatlog .turn.assistant .who {
+  color: var(--baton);
+}
+.chatlog .say {
+  /* The agent answers in Markdown. Rendering it is a later layer; until then the
+     line breaks it wrote are the structure, and collapsing them loses the answer. */
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--graphite);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-chip);
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.chip button {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+.chip button:hover {
+  color: var(--text);
+}
+
 button.act {
   background: var(--graphite);
   border: 1px solid var(--stroke);

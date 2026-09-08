@@ -40,7 +40,6 @@ function Surface() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<number | null>(null);
   const [roster, setRoster] = useState<RosterMode | null>(null);
-  const [provider, setProvider] = useState<string | null>(null);
 
   const [locked, setLocked] = useState(false);
   const [moved, setMoved] = useState(0);
@@ -765,8 +764,6 @@ function Surface() {
           mode={roster}
           onClose={() => setRoster(null)}
           onHubTab={(t) => setRoster({ kind: "hub", tab: t })}
-          provider={provider}
-          setProvider={setProvider}
         />
       ) : null}
 
