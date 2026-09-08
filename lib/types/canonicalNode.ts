@@ -36,6 +36,14 @@ export interface AttributedItem {
   sourceSection: string;
   confidence: AttributionConfidence;
   nodeKey?: string; // present only when confidence === "matched"
+  /**
+   * Whether the item actually landed on a node. Only engines carry item lists, so an
+   * item matched to a screen matches nothing that can hold it — and before this flag
+   * existed it was neither attached nor unattributed, which meant it appeared nowhere
+   * at all. Set by parser.ts's attachItems; read by diagnostics.ts so an unplaceable
+   * item is still reported and still reaches an owner card.
+   */
+  placed?: boolean;
 }
 
 interface BaseCanonicalNode {

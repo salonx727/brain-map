@@ -64,7 +64,12 @@ function attachItems(nodes: EngineNode[], items: AttributedItem[], field: "block
   for (const item of items) {
     if (item.confidence !== "matched" || !item.nodeKey) continue;
     const node = byKey.get(item.nodeKey);
-    if (node) node[field].push(item);
+    // Left unmarked when the match is real but points at something with no item list —
+    // a screen, today. diagnostics.ts picks those up rather than letting them vanish.
+    if (node) {
+      node[field].push(item);
+      item.placed = true;
+    }
   }
 }
 

@@ -28,14 +28,26 @@ function unattributedItemToDiagnostic(item: AttributedItem, kind: "blocker" | "o
   };
 }
 
+/**
+ * An item nothing on the map is holding: never attributed, or attributed to a node with
+ * no list to put it in (only engines have one, so a screen match places nothing).
+ *
+ * The second case used to be invisible. It is not "unattributed" — the match is real —
+ * but it was not attached either, so it was reported by nothing and rendered by nothing.
+ * Eight of COYOTE's items were in exactly that state.
+ */
+function isHomeless(item: AttributedItem): boolean {
+  return item.confidence === "unattributed" || item.placed !== true;
+}
+
 export function buildFullDiagnostics(parsed: {
   diagnostics: Diagnostic[];
   blockers: AttributedItem[];
   openQuestions: AttributedItem[];
 }): Diagnostic[] {
   const unattributed = [
-    ...parsed.blockers.filter((b) => b.confidence === "unattributed").map((b) => unattributedItemToDiagnostic(b, "blocker")),
-    ...parsed.openQuestions.filter((q) => q.confidence === "unattributed").map((q) => unattributedItemToDiagnostic(q, "open question")),
+    ...parsed.blockers.filter(isHomeless).map((b) => unattributedItemToDiagnostic(b, "blocker")),
+    ...parsed.openQuestions.filter(isHomeless).map((q) => unattributedItemToDiagnostic(q, "open question")),
   ];
   return [...parsed.diagnostics, ...unattributed];
 }

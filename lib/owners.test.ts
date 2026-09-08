@@ -5,7 +5,8 @@
 import { describe, expect, it } from "vitest";
 import { buildModel } from "@/lib/adapter";
 import { unattributedFrom } from "@/lib/owners";
-import type { Diagnostic } from "@/lib/types/canonicalNode";
+import { buildFullDiagnostics } from "@/lib/coyote/diagnostics";
+import type { AttributedItem, Diagnostic } from "@/lib/types/canonicalNode";
 import type { PmLayer, PmLayoutPosition } from "@/lib/types/pm";
 
 const EMPTY_PM: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [] };
@@ -33,6 +34,35 @@ describe("unattributedFrom", () => {
       looseBlocker("fix one line in drop_engine.js"),
     ];
     expect(unattributedFrom(diagnostics).map((i) => i.text)).toEqual(["fix one line in drop_engine.js"]);
+  });
+});
+
+describe("an item nothing is holding", () => {
+  const attributed = (over: Partial<AttributedItem>): AttributedItem => ({
+    text: "t",
+    sourceSection: "§15",
+    confidence: "matched",
+    ...over,
+  });
+
+  it("is reported when it matched a node that cannot hold it", () => {
+    // The silent case: a real match against a screen, which carries no item list. It is
+    // not unattributed and it was never attached, so before `placed` it went nowhere.
+    const parsed = {
+      diagnostics: [],
+      blockers: [attributed({ nodeKey: "screen:S1" })],
+      openQuestions: [],
+    };
+    expect(buildFullDiagnostics(parsed)).toHaveLength(1);
+  });
+
+  it("is not reported once it is actually on a node", () => {
+    const parsed = {
+      diagnostics: [],
+      blockers: [attributed({ nodeKey: "engine:E05", placed: true })],
+      openQuestions: [],
+    };
+    expect(buildFullDiagnostics(parsed)).toEqual([]);
   });
 });
 
