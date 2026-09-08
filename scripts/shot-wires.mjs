@@ -15,12 +15,14 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT } });
 await page.goto(URL, { waitUntil: "networkidle" });
 
+const twoD = await page.locator("#wires path").count();
 await page.getByText("WIRE", { exact: true }).click();
+await page.waitForSelector("#field3d.open", { timeout: 10_000 });
 await page.waitForTimeout(600);
 
-const drawn = await page.locator("#wires path").count();
 console.log("URL           :", URL);
-console.log("wire paths    :", drawn);
+console.log("2D wire paths :", twoD);
+console.log("3D canvas     :", (await page.locator("#field3d.open").count()) > 0);
 
 const out = `wires-${WIDTH}x${HEIGHT}.png`;
 await page.screenshot({ path: out });

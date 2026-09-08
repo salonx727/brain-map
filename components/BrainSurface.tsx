@@ -5,7 +5,7 @@ import { BrainProvider, resetTally, useBrain } from "@/lib/brain";
 import { IntakeProvider } from "@/lib/intake";
 import { upsertLayoutPositionAction } from "@/app/actions/pm";
 import { SIZE } from "@/lib/seed";
-import { centreOf, collides, linksOf, otherEnd } from "@/lib/graph";
+import { collides, linksOf, otherEnd } from "@/lib/graph";
 import type { Model } from "@/lib/types";
 import ControlPanel from "./ControlPanel";
 import Field3D from "./Field3D";
@@ -559,47 +559,6 @@ function Surface() {
         }}
       >
         <div id="plane" ref={planeRef}>
-          <svg id="wires">
-            {model.links.map((l, i) => {
-              const A = model.nodes[l.a];
-              const B = model.nodes[l.b];
-              if (!A || !B) return null;
-              const focused = !wireMode || !wireFocus || l.a === wireFocus || l.b === wireFocus;
-              const a = centreOf(A);
-              const b = centreOf(B);
-              const mx = (a.x + b.x) / 2;
-              return (
-                <path
-                  key={l.id ?? `${l.a}-${l.b}-${i}`}
-                  className={l.canon ? "canon" : "pm"}
-                  d={
-                    "M " +
-                    (a.x + 6000) +
-                    " " +
-                    (a.y + 6000) +
-                    " C " +
-                    (mx + 6000) +
-                    " " +
-                    (a.y + 6000) +
-                    " " +
-                    (mx + 6000) +
-                    " " +
-                    (b.y + 6000) +
-                    " " +
-                    (b.x + 6000) +
-                    " " +
-                    (b.y + 6000)
-                  }
-                  fill="none"
-                  strokeWidth={l.canon ? "1" : "1.4"}
-                  stroke="var(--baton)"
-                  strokeDasharray={l.back ? "7 5" : undefined}
-                  opacity={focused ? (l.canon ? "0.45" : "0.75") : "0.10"}
-                />
-              );
-            })}
-          </svg>
-
           {model.order.map((id) => {
             const d = model.nodes[id];
             if (!d) return null;

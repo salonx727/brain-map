@@ -54,15 +54,6 @@ body {
   transform-origin: 0 0;
   will-change: transform;
 }
-#wires {
-  position: absolute;
-  left: -6000px;
-  top: -6000px;
-  width: 12000px;
-  height: 12000px;
-  overflow: visible;
-  pointer-events: none;
-}
 .node.unwired {
   opacity: 0.16;
 }

@@ -6,11 +6,11 @@ const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 await page.goto(url, { waitUntil: "networkidle" });
 await page.waitForSelector(".node", { timeout: 60_000 });
 
-const pathsBefore = await page.locator("#wires path").count();
+const twoDBefore = await page.locator("#wires path").count();
 const cardsBefore = await page.locator(".node").count();
-console.log(`before: ${cardsBefore} cards, ${pathsBefore} wires`);
-if (pathsBefore === 0) {
-  console.log("FAIL: 2D map has no wires");
+console.log(`before: ${cardsBefore} cards, ${twoDBefore} 2D wires`);
+if (twoDBefore !== 0) {
+  console.log("FAIL: 2D map should not draw wires");
   await browser.close();
   process.exit(1);
 }
@@ -25,13 +25,13 @@ await page.waitForFunction(
   { timeout: 30_000 },
 );
 await page.waitForTimeout(800);
-const pathsAfter = await page.locator("#wires path").count();
+const twoDAfter = await page.locator("#wires path").count();
 const cardsAfter = await page.locator(".node").count();
-console.log(`after add: ${cardsAfter} cards, ${pathsAfter} wires`);
+console.log(`after add: ${cardsAfter} cards, ${twoDAfter} 2D wires`);
 
-const added = cardsAfter > cardsBefore && pathsAfter > pathsBefore;
+const added = cardsAfter > cardsBefore && twoDAfter === 0;
 if (!added) {
-  console.log("FAIL: new card did not add a wire");
+  console.log("FAIL: new card missing, or 2D wires appeared");
 }
 
 const del = page.getByRole("button", { name: "REMOVE THIS CARD" });
