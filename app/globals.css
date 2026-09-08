@@ -206,6 +206,81 @@ body {
   animation: rise 200ms var(--ease);
 }
 
+/* The hub — INTAKE and AI — is the one roster whose contents grow without limit, so it
+   is the one that gets a fixed frame. Left to size itself, the card grew with every
+   answer until it hit 88vh and then scrolled as a whole: the header, the tabs and the
+   composer all slid away, and typing a second question meant scrolling back down to find
+   the box you had just used. Height is decided here and the inner list absorbs the
+   difference, so the frame never moves no matter how long the conversation runs. */
+#rosterCard.hub {
+  height: min(760px, 88vh);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#rosterCard.hub .head {
+  flex: 0 0 auto;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+#rosterCard.hub > .seg {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+}
+/* Every panel inside the hub is a column that fills what is left. The min-height:0 is
+   load-bearing, not defensive: a flex child's default min-height is its content, so
+   without it the column refuses to shrink, the scroll container never becomes shorter
+   than its contents, and nothing scrolls anywhere. */
+.panelCol {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.scrollArea {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* The gutter is padding rather than margin so a scrollbar sits beside the text
+     instead of on top of it. */
+  padding-right: 4px;
+  margin-right: -4px;
+}
+
+/* One control, two or three choices, and no ambiguity about which is live. The tabs and
+   the engine picker were both rows of full-size buttons, which read as three equal
+   actions rather than one setting — and stacked, they put two heavy rows between the
+   title and the first real thing on the panel. */
+.seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--graphite);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-chip);
+  flex: 0 0 auto;
+}
+.seg button {
+  flex: 1;
+  padding: 9px 6px;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  color: var(--text-3);
+  font-family: var(--font-space-mono), monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+.seg button:hover {
+  color: var(--text-2);
+}
+.seg button.on {
+  background: var(--surface);
+  color: var(--baton);
+}
+
 .ctls {
   display: flex;
   flex-wrap: wrap;
@@ -624,17 +699,20 @@ select.f option {
 }
 
 /* ── The AI hub's conversation with the brain ─────────────────────────────────
-   Scrolls on its own rather than growing the roster card, so the composer stays
-   where the thumb expects it however long the thread gets. Bubbled and side-aligned
-   like a ChatGPT/Claude thread, not a bordered list — the shape reads as a chat. */
+   The only thing on the surface that scrolls. Bubbled and side-aligned like a
+   ChatGPT/Claude thread, not a bordered list — the shape reads as a chat.
+
+   It takes its height from what the card has left rather than declaring one. A vh
+   maximum makes the panel a different size on every screen and, worse, lets the card
+   keep growing until the header and the composer scroll off the top and bottom. */
 .chatlog {
-  max-height: 46vh;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  margin-bottom: 12px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 2px;
+  padding: 2px 6px 2px 2px;
 }
 .chatlog .turn {
   display: flex;
@@ -681,11 +759,26 @@ select.f option {
   margin-top: 4px;
 }
 
+/* Everything below the thread: attachments, the box, the buttons. Pinned to the bottom
+   of the card and separated by a rule, so the place you type is always in the same
+   place — the single thing that made the old panel feel unstable was that it wasn't. */
+.composer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--stroke);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+.composer .acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
+  margin-bottom: 8px;
 }
 .chip {
   display: inline-flex;

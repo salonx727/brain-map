@@ -21,33 +21,25 @@ import MapAsk from "./MapAsk";
 
 type Engine = "BRAIN" | "MAP";
 
-const BLURB: Record<Engine, string> = {
-  BRAIN: "The full agent — vault, workspace, files, GTD. Needs CommandOS running.",
-  MAP: "This map only. Always available.",
-};
-
 export default function AiPanel() {
   const [engine, setEngine] = useState<Engine>("BRAIN");
 
   return (
-    <>
-      <div style={{ display: "flex", gap: 8 }}>
+    <div className="panelCol">
+      {/* A segmented control, not two buttons. What each engine can reach used to be
+          spelled out in a paragraph under it, which put three lines of explanation
+          between the title and the conversation every single time the panel opened —
+          read once, then noise forever. Each engine says what it is in its own empty
+          state instead, which is exactly when someone needs to be told and never after. */}
+      <div className="seg" style={{ marginBottom: 14 }}>
         {(["BRAIN", "MAP"] as const).map((e) => (
-          <button
-            key={e}
-            className={"act" + (engine === e ? " armed" : "")}
-            style={{ flex: 1, padding: 13, fontSize: 10 }}
-            onClick={() => setEngine(e)}
-          >
+          <button key={e} className={engine === e ? "on" : undefined} onClick={() => setEngine(e)}>
             {e}
           </button>
         ))}
       </div>
-      <div className="sub" style={{ margin: "8px 0 14px" }}>
-        {BLURB[engine]}
-      </div>
 
       {engine === "BRAIN" ? <BrainChat /> : <MapAsk />}
-    </>
+    </div>
   );
 }

@@ -96,46 +96,32 @@ export default function MapAsk() {
     }
   }
 
+  // The server holds an API key, so the field is dead weight on every visit that does
+  // not need it — which is all of them, until one does. It appears when the server says
+  // it has nothing to use, and not before.
+  const needsKey = error?.toLowerCase().includes("api key") ?? false;
+
   return (
-    <>
-      <textarea
-        className="f"
-        style={{ width: "100%", minHeight: 76, resize: "vertical", fontFamily: "inherit" }}
-        placeholder="Ask about the map — what's blocked, what's waiting on Shawn…"
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask();
-        }}
-      />
+    <div className="panelCol">
+      <div className="scrollArea">
+        {!answer && !error ? (
+          <div className="none">
+            Reads this map and answers against it — what&apos;s blocked, what&apos;s waiting on
+            Shawn, what a card is missing. It can propose changes; nothing is written until
+            you approve it. No vault, no files.
+          </div>
+        ) : null}
 
-      <input
-        className="f"
-        style={{ width: "100%", marginTop: 8 }}
-        type="password"
-        placeholder="Your own API key — optional, not stored"
-        value={apiKey}
-        onChange={(e) => setApiKey(e.target.value)}
-      />
+        {error ? <div className="none">{error}</div> : null}
 
-      <button className="act" style={{ width: "100%", marginTop: 10, padding: 14 }} disabled={!ready} onClick={ask}>
-        {asking ? "READING THE MAP…" : "ASK"}
-      </button>
+        {answer ? <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.62 }}>{answer}</div> : null}
 
-      {error ? (
-        <div className="none" style={{ marginTop: 14 }}>
-          {error}
-        </div>
-      ) : null}
-
-      {answer ? <div style={{ marginTop: 16, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{answer}</div> : null}
-
-      {proposals.length ? (
-        <div style={{ marginTop: 18 }}>
-          <div className="eyebrow">{proposals.length} PROPOSED · NOTHING IS WRITTEN UNTIL YOU APPROVE</div>
-          {proposals.map((p, i) => {
-            const verdict = verdicts[i];
-            return (
+        {proposals.length ? (
+          <div style={{ marginTop: 18 }}>
+            <div className="eyebrow">{proposals.length} PROPOSED · NOTHING IS WRITTEN UNTIL YOU APPROVE</div>
+            {proposals.map((p, i) => {
+              const verdict = verdicts[i];
+              return (
               <div className="item" key={i} style={{ display: "block", padding: "14px 0" }}>
                 <div>{describe(p)}</div>
                 <div className="sub" style={{ marginTop: 4 }}>
@@ -169,15 +155,41 @@ export default function MapAsk() {
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
-      ) : null}
-
-      <div className="foot" style={{ marginTop: 18 }}>
-        READS THE MAP AND PROPOSES · NEVER WRITES UNAPPROVED · NO VAULT, NO FILES · WORKS
-        WITH NOTHING RUNNING AT HOME
+              );
+            })}
+          </div>
+        ) : null}
       </div>
-    </>
+
+      <div className="composer">
+        <textarea
+          className="f"
+          style={{ width: "100%", minHeight: 62, resize: "none", fontFamily: "inherit" }}
+          placeholder="Ask about the map…"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask();
+          }}
+        />
+
+        {needsKey ? (
+          <input
+            className="f"
+            style={{ width: "100%", marginTop: 8 }}
+            type="password"
+            placeholder="Your own API key — not stored"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+        ) : null}
+
+        <div className="acts">
+          <button className="act armed" style={{ flex: 1, padding: 12, fontSize: 10 }} disabled={!ready} onClick={ask}>
+            {asking ? "READING THE MAP…" : "ASK"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

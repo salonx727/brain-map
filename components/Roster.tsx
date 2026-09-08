@@ -1,12 +1,12 @@
 "use client";
 
 import { useBrain } from "@/lib/brain";
-import { useIntake } from "@/lib/intake";
 import { uiStateToDb } from "@/lib/adapter";
-import { deleteFileAction, setNodeStateAction } from "@/app/actions/pm";
+import { setNodeStateAction } from "@/app/actions/pm";
 import { STATES } from "@/lib/seed";
 import type { BrainNode } from "@/lib/types";
 import AiPanel from "./AiPanel";
+import IntakePanel from "./IntakePanel";
 
 export type RosterMode =
   | { kind: "state"; id: string }
@@ -23,7 +23,6 @@ export default function Roster({
   onHubTab: (tab: 0 | 1) => void;
 }) {
   const { model, bump, persist } = useBrain();
-  const intake = useIntake();
 
   const d: BrainNode | null = mode.kind === "state" ? model.nodes[mode.id] ?? null : null;
 
@@ -37,13 +36,16 @@ export default function Roster({
     >
       <div
         id="rosterCard"
+        // The hub gets a fixed frame; the state picker is four buttons and should stay
+        // the size of four buttons.
+        className={mode.kind === "hub" ? "hub" : undefined}
         role="dialog"
         aria-label={mode.kind === "state" ? "Node state roster" : "Intake and AI"}
       >
         <div className="head">
           <div>
             <div className="eyebrow">
-              {mode.kind === "state" ? "STATE" : "CC · CLAUDE COMM · HELD §367"}
+              {mode.kind === "state" ? "STATE" : "HUB"}
             </div>
             <div className="title">
               {mode.kind === "state"
@@ -93,12 +95,11 @@ export default function Roster({
           </>
         ) : (
           <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <div className="seg">
               {(["INTAKE", "AI"] as const).map((label, i) => (
                 <button
                   key={label}
-                  className={"act" + (mode.tab === i ? " armed" : "")}
-                  style={{ flex: 1, padding: 13, fontSize: 10 }}
+                  className={mode.tab === i ? "on" : undefined}
                   onClick={() => onHubTab(i as 0 | 1)}
                 >
                   {label}
@@ -106,70 +107,7 @@ export default function Roster({
               ))}
             </div>
 
-            {mode.tab === 0 ? (
-              <>
-                <div className="intake">
-                  <button onClick={() => intake.pickPhotos("unrouted")}>
-                    <span className="plus">+</span>
-                    <span>PHOTOS</span>
-                  </button>
-                  <button onClick={() => intake.pickCamera("unrouted")}>
-                    <span className="plus">+</span>
-                    <span>CAMERA</span>
-                  </button>
-                  <button onClick={() => intake.pickFiles("unrouted")}>
-                    <span className="plus">+</span>
-                    <span>FILES</span>
-                  </button>
-                </div>
-
-                {!model.unrouted.length ? (
-                  <div className="none">
-                    Nothing waiting. Anything dropped here sits until it has a home.
-                  </div>
-                ) : (
-                  model.unrouted.map((f, i) => (
-                    <div className="item" key={f.id ?? i}>
-                      <span>{f.name}</span>
-                      <button
-                        className="minus"
-                        aria-label="Remove"
-                        onClick={() => {
-                          const prior = model.unrouted.slice();
-                          model.unrouted.splice(i, 1);
-                          bump();
-                          if (!f.id) return;
-                          persist(
-                            () => deleteFileAction(f.id as string),
-                            () => {
-                              model.unrouted = prior;
-                            },
-                          );
-                        }}
-                      >
-                        <span />
-                      </button>
-                    </div>
-                  ))
-                )}
-
-                <div className="foot" style={{ marginTop: 16 }}>
-                  UNROUTED IS A STATE, NOT AN ERROR
-                </div>
-
-                <div
-                  style={{
-                    borderTop: "1px solid var(--stroke)",
-                    marginTop: 18,
-                    paddingTop: 18,
-                  }}
-                >
-                  <AiPanel />
-                </div>
-              </>
-            ) : (
-              <AiPanel />
-            )}
+            {mode.tab === 0 ? <IntakePanel /> : <AiPanel />}
           </>
         )}
       </div>

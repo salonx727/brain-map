@@ -115,7 +115,7 @@ export default function BrainChat() {
   }
 
   return (
-    <>
+    <div className="panelCol">
       <div className="chatlog">
         {!messages.length ? (
           <div className="none">
@@ -153,60 +153,56 @@ export default function BrainChat() {
         <div ref={tail} />
       </div>
 
-      {error ? <div className="none">{error}</div> : null}
+      <div className="composer">
+        {error ? (
+          <div className="none" style={{ marginBottom: 8 }}>
+            {error}
+          </div>
+        ) : null}
 
-      {attachments.length ? (
-        <div className="chips">
-          {attachments.map((a) => (
-            <span className="chip" key={a.id}>
-              {a.fileName}
-              <button aria-label="Remove" onClick={() => setAttachments((l) => l.filter((x) => x.id !== a.id))}>
-                ×
-              </button>
-            </span>
-          ))}
+        {attachments.length ? (
+          <div className="chips">
+            {attachments.map((a) => (
+              <span className="chip" key={a.id}>
+                {a.fileName}
+                <button aria-label="Remove" onClick={() => setAttachments((l) => l.filter((x) => x.id !== a.id))}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        <textarea
+          className="f"
+          style={{ width: "100%", minHeight: 62, resize: "none", fontFamily: "inherit" }}
+          placeholder="Ask it anything, or send a file to read and file"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
+          }}
+        />
+
+        <input ref={fileInput} type="file" multiple style={{ display: "none" }} onChange={(e) => attach(e.target.files)} />
+
+        <div className="acts">
+          <button className="act" style={{ padding: 12, fontSize: 10 }} disabled={uploading} onClick={() => fileInput.current?.click()}>
+            {uploading ? "UPLOADING…" : "ATTACH"}
+          </button>
+          <button
+            className="act armed"
+            style={{ flex: 1, padding: 12, fontSize: 10 }}
+            disabled={!threadId || (!text.trim() && !attachments.length)}
+            onClick={send}
+          >
+            SEND
+          </button>
+          <button className="act" style={{ padding: 12, fontSize: 10 }} onClick={newThread} title="Start a fresh conversation">
+            NEW
+          </button>
         </div>
-      ) : null}
-
-      <textarea
-        className="f"
-        style={{ width: "100%", marginTop: 10, minHeight: 68, resize: "vertical", fontFamily: "inherit" }}
-        placeholder="Ask it anything, or send it a file to read and file"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
-        }}
-      />
-
-      <input
-        ref={fileInput}
-        type="file"
-        multiple
-        style={{ display: "none" }}
-        onChange={(e) => attach(e.target.files)}
-      />
-
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button className="act" style={{ padding: 13, fontSize: 10 }} disabled={uploading} onClick={() => fileInput.current?.click()}>
-          {uploading ? "UPLOADING…" : "ATTACH"}
-        </button>
-        <button
-          className="act armed"
-          style={{ flex: 1, padding: 13, fontSize: 10 }}
-          disabled={!threadId || (!text.trim() && !attachments.length)}
-          onClick={send}
-        >
-          SEND
-        </button>
-        <button className="act" style={{ padding: 13, fontSize: 10 }} onClick={newThread} title="Start a fresh session">
-          NEW
-        </button>
       </div>
-
-      <div className="foot" style={{ marginTop: 14 }}>
-        SAME AGENT AS TELEGRAM · VAULT AND WORKSPACE IN REACH · NEEDS COMMANDOS RUNNING
-      </div>
-    </>
+    </div>
   );
 }
