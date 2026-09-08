@@ -156,6 +156,16 @@ export default function Roster({
                 <div className="foot" style={{ marginTop: 16 }}>
                   UNROUTED IS A STATE, NOT AN ERROR
                 </div>
+
+                <div
+                  style={{
+                    borderTop: "1px solid var(--stroke)",
+                    marginTop: 18,
+                    paddingTop: 18,
+                  }}
+                >
+                  <AiPanel />
+                </div>
               </>
             ) : (
               <AiPanel />

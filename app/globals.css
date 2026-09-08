@@ -625,18 +625,29 @@ select.f option {
 
 /* ── The AI hub's conversation with the brain ─────────────────────────────────
    Scrolls on its own rather than growing the roster card, so the composer stays
-   where the thumb expects it however long the thread gets. */
+   where the thumb expects it however long the thread gets. Bubbled and side-aligned
+   like a ChatGPT/Claude thread, not a bordered list — the shape reads as a chat. */
 .chatlog {
   max-height: 46vh;
   overflow-y: auto;
   margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 2px;
 }
 .chatlog .turn {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--stroke);
+  display: flex;
+  flex-direction: column;
+  max-width: 86%;
 }
-.chatlog .turn:last-of-type {
-  border-bottom: none;
+.chatlog .turn.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.chatlog .turn.assistant {
+  align-self: flex-start;
+  align-items: flex-start;
 }
 .chatlog .who {
   font-size: 9px;
@@ -653,6 +664,21 @@ select.f option {
   white-space: pre-wrap;
   line-height: 1.6;
   font-size: 14px;
+  padding: 10px 14px;
+  border-radius: 16px;
+}
+.chatlog .turn.user .say {
+  background: var(--baton);
+  color: #080808;
+  border-bottom-right-radius: 4px;
+}
+.chatlog .turn.assistant .say {
+  background: var(--graphite);
+  border: 1px solid var(--stroke);
+  border-bottom-left-radius: 4px;
+}
+.chatlog .turn .sub {
+  margin-top: 4px;
 }
 
 .chips {
