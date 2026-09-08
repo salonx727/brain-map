@@ -52,19 +52,32 @@ function pmNodeFromRow(row: {
 }
 
 /**
- * The next human-readable ref for a new PM node — `SUB-<n>`/`FN-<n>`, counted per kind.
- * Never the uuid: confirmed live 2026-09-05, a raw `pm:<uuid>` node_key was leaking onto
- * a card face as its displayed ref (v5.2's own CODEMAN notes). This is presentation only
- * — a count-based race between two simultaneous creates could in principle repeat a
- * number, which is an acceptable, disclosed tradeoff at this tool's actual scale (2-3
- * concurrent users, "last write wins" already the ruled concurrency policy) rather than
- * a sequence object for a value nothing else keys on.
+ * The next human-readable ref for a new PM node — `SUB-<n>`/`FN-<n>`, per kind. Never the
+ * uuid: confirmed live 2026-09-05, a raw `pm:<uuid>` node_key was leaking onto a card face
+ * as its displayed ref (v5.2's own CODEMAN notes).
+ *
+ * One past the highest number in use, not one past the row count. Counting rows repeats a
+ * ref as soon as anything has been deleted — observed live with two SUB-9 cards on the
+ * board at once — and now that a card can be created and removed from the surface itself,
+ * that is the ordinary case rather than an edge one. Numbers are not reused after a
+ * delete, deliberately: a new card wearing a removed card's ref is worse than a gap.
+ *
+ * Still presentation only. A race between two simultaneous creates could repeat a number,
+ * which stays an acceptable, disclosed tradeoff at this tool's actual scale (2-3
+ * concurrent users, "last write wins" already the ruled concurrency policy) rather than a
+ * sequence object for a value nothing else keys on.
  */
 async function nextDisplayRef(client: SupabaseClient, kind: "subnode" | "function"): Promise<string> {
-  const { count, error } = await client.from("pm_nodes").select("*", { count: "exact", head: true }).eq("kind", kind);
-  if (error) throw new Error(`nextDisplayRef: ${error.message}`);
   const prefix = kind === "function" ? "FN" : "SUB";
-  return `${prefix}-${(count ?? 0) + 1}`;
+  const { data, error } = await client.from("pm_nodes").select("display_ref").eq("kind", kind);
+  if (error) throw new Error(`nextDisplayRef: ${error.message}`);
+
+  let highest = 0;
+  for (const row of data ?? []) {
+    const match = /^[A-Z]+-(\d+)$/.exec(row.display_ref as string);
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return `${prefix}-${highest + 1}`;
 }
 
 /** A custom sub-node/function. parentNodeKey may be a canonical_nodes.node_key or another pm_nodes.node_key — never validated against canonical_nodes here (that would create a cross-table FK-shaped coupling this architecture deliberately avoids); an orphaned parent just means the UI has nothing to nest under, not a data-integrity failure. */
@@ -111,6 +124,31 @@ export async function updateItemStatus(client: SupabaseClient, id: string, statu
     .single();
   const row = unwrap({ data, error }, "updateItemStatus");
   return itemFromRow(row);
+}
+
+/** Retitles a to-do or blocker. Separate from updateItemStatus because the two are edited independently — a line gets reworded far more often than it changes GTD status, and folding them into one call would make every keystroke also restate a status it has no opinion about. */
+export async function updateItemTitle(client: SupabaseClient, id: string, title: string, updatedBy?: string | null): Promise<PmItem> {
+  const { data, error } = await client
+    .from("pm_items")
+    .update({ title, updated_by: updatedBy ?? null, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  const row = unwrap({ data, error }, "updateItemTitle");
+  return itemFromRow(row);
+}
+
+/**
+ * Removes a to-do or blocker outright.
+ *
+ * PmItemStatus is GTD's own vocabulary — inbox · next_action · waiting_for ·
+ * someday_maybe · done — and none of those means "this line should not exist". Marking a
+ * mistyped item `done` would be a lie the dashboard then counts as completed work, so a
+ * removal is a removal.
+ */
+export async function deleteItem(client: SupabaseClient, id: string): Promise<void> {
+  const { error } = await client.from("pm_items").delete().eq("id", id);
+  if (error) throw new Error(`deleteItem: ${error.message}`);
 }
 
 function itemFromRow(row: {

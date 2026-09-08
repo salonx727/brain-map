@@ -26,6 +26,19 @@ export async function updateItemStatusAction(id: string, status: PmItem["status"
   return item;
 }
 
+export async function updateItemTitleAction(id: string, title: string, updatedBy?: string | null) {
+  const client = createPmServiceClient();
+  const item = await pmWriter.updateItemTitle(client, id, title, updatedBy);
+  revalidatePath("/");
+  return item;
+}
+
+export async function deleteItemAction(id: string) {
+  const client = createPmServiceClient();
+  await pmWriter.deleteItem(client, id);
+  revalidatePath("/");
+}
+
 export async function createNoteAction(input: { kind: "note" | "decision"; body: string; nodeKey?: string | null; createdBy?: string | null }) {
   const client = createPmServiceClient();
   const note = await pmWriter.createNote(client, input);

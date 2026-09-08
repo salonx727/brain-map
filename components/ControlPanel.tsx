@@ -9,12 +9,18 @@ import {
   freeSpot,
   hasLink,
   linksOf,
-  namesFrom,
   otherEnd,
   sizeOf,
   totalItems,
 } from "@/lib/graph";
-import type { BrainNode } from "@/lib/types";
+import {
+  clearUiSlotAction,
+  createNodeLinkAction,
+  deleteFileAction,
+  deleteNodeLinkAction,
+  renamePmNodeAction,
+} from "@/app/actions/pm";
+import type { BrainNode, Link } from "@/lib/types";
 import ListEditor from "./ListEditor";
 
 export default function ControlPanel({
@@ -32,8 +38,17 @@ export default function ControlPanel({
   onOpenCard: (id: string, tab: number | null) => void;
   onShowOnField: (id: string) => void;
 }) {
-  const { model, bump, saveNow, saveSoon, addNode, removeNode, isEmpty } = useBrain();
+  const { model, bump, persist, addFiles, addNode, removeNode, isEmpty, canEditNode } = useBrain();
   const intake = useIntake();
+
+  /**
+   * A canonical card is COYOTE's, not this app's. Its name and ref are read from the
+   * published snapshot and there is no write path for them anywhere in the PM layer —
+   * renamePmNode simply has no canonical equivalent. Everything else on this panel still
+   * works against it: to-dos, files, wires and position are PM rows that point at the
+   * node, they are not the node.
+   */
+  const editable = canEditNode(d.id);
 
   const [wireTo, setWireTo] = useState("");
   const [over, setOver] = useState(false);
@@ -95,35 +110,39 @@ export default function ControlPanel({
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 22 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: editable ? 22 : 8 }}>
         <label style={{ width: 128 }}>
           <span className="lab">REF</span>
-          <input
-            className="f"
-            value={d.ref}
-            onChange={(e) => {
-              d.ref = e.target.value;
-              bump();
-              saveSoon();
-            }}
-            onBlur={saveNow}
-          />
+          {/* Never editable, for either kind. A canonical ref is derived from the node key
+              COYOTE declares; a PM ref is assigned once at creation and pmWriter has no
+              path that changes it. An input here would be a field that quietly reverts. */}
+          <input className="f" value={d.ref} readOnly disabled />
         </label>
         <label style={{ flex: 1 }}>
           <span className="lab">NAME</span>
           <input
             className="f"
             value={d.name}
-            placeholder="Blank keeps the ref"
+            readOnly={!editable}
+            disabled={!editable}
+            placeholder={editable ? "Blank keeps the ref" : ""}
             onChange={(e) => {
               d.name = e.target.value;
               bump();
-              saveSoon();
             }}
-            onBlur={saveNow}
+            onBlur={() => {
+              if (!editable) return;
+              persist(() => renamePmNodeAction(d.id, d.name));
+            }}
           />
         </label>
       </div>
+
+      {!editable ? (
+        <div className="cap" style={{ marginBottom: 18 }}>
+          NAME AND REF COME FROM COYOTE · TO-DOS, FILES AND WIRES BELOW ARE YOURS
+        </div>
+      ) : null}
 
       <div className="strip">
         {TAGS.map((t, i) => (
@@ -152,12 +171,18 @@ export default function ControlPanel({
                       className="slotbtn"
                       aria-label="Remove image"
                       onClick={() => {
+                        const prior = d.screens.slice();
                         const arr = d.screens.slice();
                         arr[idx] = null;
                         while (arr.length && arr[arr.length - 1] === null) arr.pop();
                         d.screens = arr;
                         bump();
-                        saveNow();
+                        persist(
+                          () => clearUiSlotAction(d.id, idx),
+                          () => {
+                            d.screens = prior;
+                          },
+                        );
                       }}
                     >
                       &minus;
@@ -191,9 +216,14 @@ export default function ControlPanel({
             const parent = d.id;
             const label = item.text;
             const spot = freeSpot(model.nodes, model.order, parent, "box");
+            const prior = d.subs.slice();
             d.subs = d.subs.filter((_, k) => k !== i);
-            addNode({ x: spot.x, y: spot.y, name: label, wireTo: parent });
-            saveNow();
+            bump();
+            void addNode({ x: spot.x, y: spot.y, name: label, wireTo: parent }).then((id) => {
+              if (id) return;
+              d.subs = prior; // the card was never created, so the line stays where it was
+              bump();
+            });
           }}
         />
       ) : null}
@@ -225,11 +255,11 @@ export default function ControlPanel({
             onDrop={(e) => {
               e.preventDefault();
               setOver(false);
-              const names = namesFrom(e.dataTransfer);
-              if (!names.length) return;
-              d.drops = d.drops.concat(names.map((n) => ({ name: n, size: null, data: null })));
-              bump();
-              saveNow();
+              // Only a drag carrying real bytes can be filed. A drag of bare filenames
+              // (from some apps, or a text selection) used to append a row that recorded
+              // a name and nothing else — there is no file behind it to store, so it
+              // would be a row that looks filed and holds nothing.
+              if (e.dataTransfer.files?.length) addFiles(d.id, e.dataTransfer.files);
             }}
           >
             Or drop content here
@@ -246,20 +276,22 @@ export default function ControlPanel({
                 ) : null}
                 <div style={{ flex: 1 }}>
                   <div>{f.name}</div>
-                  {f.size ? (
-                    <div className="meta">
-                      {sizeOf(f.size) +
-                        (f.data ? " · image held in session" : " · filename recorded")}
-                    </div>
-                  ) : null}
+                  {f.size ? <div className="meta">{sizeOf(f.size) + " · stored"}</div> : null}
                 </div>
                 <button
                   className="minus"
                   aria-label="Remove"
                   onClick={() => {
+                    const prior = d.drops.slice();
                     d.drops = d.drops.filter((_, k) => k !== i);
                     bump();
-                    saveNow();
+                    if (!f.id) return;
+                    persist(
+                      () => deleteFileAction(f.id as string),
+                      () => {
+                        d.drops = prior;
+                      },
+                    );
                   }}
                 >
                   <span />
@@ -268,7 +300,7 @@ export default function ControlPanel({
             ))
           )}
 
-          <div className="cap">HELD IN THIS SESSION ONLY · NOTHING IS UPLOADED</div>
+          <div className="cap">STORED PRIVATELY · SHOWN THROUGH A SIGNED LINK</div>
         </div>
       ) : null}
 
@@ -281,8 +313,13 @@ export default function ControlPanel({
               onChange={(e) => setWireTo(e.target.value)}
             >
               <option value="">Wire to…</option>
+              {/* A wire needs at least one PM endpoint — a database trigger enforces it,
+                  not this list. Two canonical engines are joined by COYOTE or not at all,
+                  so from a canonical card only PM cards are offered rather than letting
+                  the pick fail on submit. */}
               {model.order
                 .filter((oid) => oid !== d.id && !hasLink(model.links, d.id, oid))
+                .filter((oid) => editable || canEditNode(oid))
                 .map((oid) => (
                   <option value={oid} key={oid}>
                     {model.nodes[oid].name || model.nodes[oid].ref}
@@ -293,10 +330,20 @@ export default function ControlPanel({
               className="act"
               onClick={() => {
                 if (!wireTo) return;
-                model.links.push({ a: d.id, b: wireTo });
+                const link: Link = { a: d.id, b: wireTo };
+                model.links.push(link);
                 setWireTo("");
                 bump();
-                saveNow();
+                persist(
+                  async () => {
+                    const created = await createNodeLinkAction({ fromNodeKey: link.a, toNodeKey: link.b });
+                    link.id = created.id;
+                    bump();
+                  },
+                  () => {
+                    model.links = model.links.filter((q) => q !== link);
+                  },
+                );
               }}
             >
               WIRE
@@ -319,17 +366,32 @@ export default function ControlPanel({
                       </>
                     ) : null}
                   </span>
-                  <button
-                    className="minus"
-                    aria-label="Remove"
-                    onClick={() => {
-                      model.links = model.links.filter((q) => q !== l);
-                      bump();
-                      saveNow();
-                    }}
-                  >
-                    <span />
-                  </button>
+                  {/* A COYOTE-declared edge has no id and is not this app's to remove —
+                      it would reappear on the next publish anyway. */}
+                  {l.canon ? (
+                    <span className="cap" title="Declared by COYOTE">
+                      CANON
+                    </span>
+                  ) : (
+                    <button
+                      className="minus"
+                      aria-label="Remove"
+                      onClick={() => {
+                        const prior = model.links.slice();
+                        model.links = model.links.filter((q) => q !== l);
+                        bump();
+                        if (!l.id) return;
+                        persist(
+                          () => deleteNodeLinkAction(l.id as string),
+                          () => {
+                            model.links = prior;
+                          },
+                        );
+                      }}
+                    >
+                      <span />
+                    </button>
+                  )}
                 </div>
               );
             })
@@ -340,8 +402,9 @@ export default function ControlPanel({
             style={{ marginTop: 6, marginRight: 6 }}
             onClick={() => {
               const spot = freeSpot(model.nodes, model.order, d.id, "box");
-              const id = addNode({ x: spot.x, y: spot.y, wireTo: d.id });
-              onOpenCard(id, 4);
+              void addNode({ x: spot.x, y: spot.y, wireTo: d.id }).then((id) => {
+                if (id) onOpenCard(id, 4);
+              });
             }}
           >
             ADD WIRED CARD
@@ -384,14 +447,15 @@ export default function ControlPanel({
                 onClick={() => {
                   const parent = d.id;
                   const spot = freeSpot(model.nodes, model.order, parent, "box");
-                  const id = addNode({
+                  disarmAdd();
+                  void addNode({
                     x: spot.x,
                     y: spot.y,
                     wireTo: opt[1] ? parent : null,
+                  }).then((id) => {
+                    /* the new card opens so it can be named */
+                    if (id) onOpenCard(id, null);
                   });
-                  disarmAdd();
-                  /* the new card opens so it can be named */
-                  onOpenCard(id, null);
                 }}
               >
                 {opt[0]}
@@ -401,7 +465,10 @@ export default function ControlPanel({
         ) : null}
       </div>
 
-      {!removable ? (
+      {/* Canonical cards have no delete path anywhere in the PM layer — an engine exists
+          because COYOTE says so, and removing it here would mean nothing on the next
+          publish. Only PM-created cards can be taken away. */}
+      {!removable && editable ? (
         <div style={{ paddingTop: 6 }}>
           <button
             className={"act" + (delArmed ? " armed" : "")}
@@ -418,7 +485,7 @@ export default function ControlPanel({
             }}
           >
             {delArmed
-              ? "TAP AGAIN TO REMOVE · " +
+              ? "TAP AGAIN · PERMANENTLY REMOVES " +
                 totalItems(d) +
                 " ITEMS AND " +
                 mine.length +
@@ -428,17 +495,11 @@ export default function ControlPanel({
         </div>
       ) : null}
 
-      <div className="foot">CHANGES SAVE THEMSELVES AS YOU TYPE · SAVE CLOSES THE CARD</div>
+      <div className="foot">EVERY CHANGE IS WRITTEN AS YOU MAKE IT · DONE CLOSES THE CARD</div>
 
       <div className="savebar">
-        <button
-          className="savebtn"
-          onClick={() => {
-            saveNow();
-            onDismiss();
-          }}
-        >
-          SAVE
+        <button className="savebtn" onClick={onDismiss}>
+          DONE
         </button>
       </div>
     </div>

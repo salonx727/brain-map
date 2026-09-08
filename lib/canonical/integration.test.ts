@@ -50,28 +50,29 @@ describe("real COYOTE end-to-end (resolver -> parser -> validator)", () => {
    * incomplete edge set, so a regression here is caught here — not found by eye weeks
    * later staring at a blank map, which is how the original gap was found.
    *
-   * The work order's own expectation was 21 connections. This extractor produces 10,
-   * counted from every engine's §35 DOWNSTREAM field (extractEngines.ts's existing,
-   * already-tested field parser) plus the one edge canon names explicitly as an exception
-   * (§35.8's backward edge) — nothing pulled from READS/TRIGGER prose or cross-engine
-   * mentions, because that's exactly the unreliable-without-a-cross-check approach the
-   * Aug 30 SPINE audit already flagged (a concrete instance: E07 AFTERBURNER's TRIGGER
-   * text contains "booking off a Cube share", a lowercase common-noun "booking" a looser
-   * matcher would misread as an edge to the INT BOOKING intake node).
+   * The work order's own expectation was 21 connections. This extractor now produces 22,
+   * read from four declared fields rather than one: DOWNSTREAM, §35.2's EMITS AT SESSION
+   * CLOSE table, READS (as an inbound edge) and TRIGGER (from an intake object), plus the
+   * one edge canon names explicitly as an exception (§35.8's backward edge). It is still
+   * only ever declared fields — never cross-engine prose mentions, which is the
+   * unreliable-without-a-cross-check approach the Aug 30 SPINE audit flagged.
    *
-   * This asserts the real, reproducible count this narrow method yields today (10), not
-   * 21 — reaching 21 would mean broadening the extraction rule to sources this file's own
-   * header comment explains are unreliable. If the true intended count is 21, that's a
-   * scope decision on what counts as a citable edge, not a bug in this test — see the
-   * extractConnections/connections.test.ts comments for the exact 10 and why each one
-   * qualifies.
+   * The count exceeds the work order's 21 rather than matching it because canon declares
+   * an edge the hand-transcribed sheet missed (E07 -> E11). Getting here needed two
+   * things the narrower version lacked: EMITS captured as a field at all — E01 has no
+   * DOWNSTREAM label, so the busiest node in the architecture parsed to zero outgoing
+   * edges — and the capitalisation rule in matchesAsObject, which is what makes TRIGGER
+   * safe to read. §35.8 E07's TRIGGER says "booking off a Cube share", a lowercase common
+   * noun; §35.2 E01's says "Booking created", the object. Canon is consistent about that
+   * difference, so requiring a capital separates them exactly — a case-insensitive match
+   * invents an edge here, a case-sensitive one misses the real one.
    */
-  it("produces exactly 10 connections against real canon, all endpoints resolved, exactly one marked backward", async () => {
+  it("produces exactly 22 connections against real canon, all endpoints resolved, exactly one marked backward", async () => {
     const result = await resolveCoyoteSource();
     if (!result.ok) throw new Error(result.diagnostic.message);
     const parsed = parseCanonicalNodes(result.source);
 
-    expect(parsed.connections.length).toBe(10);
+    expect(parsed.connections.length).toBe(22);
 
     const nodeKeys = new Set(parsed.nodes.map((n) => n.nodeKey));
     for (const conn of parsed.connections) {

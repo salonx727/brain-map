@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrainProvider, resetTally, useBrain } from "@/lib/brain";
 import { IntakeProvider } from "@/lib/intake";
+import { upsertLayoutPositionAction } from "@/app/actions/pm";
 import { COUNTERS, SIZE } from "@/lib/seed";
 import { centreOf, collides, linksOf, otherEnd } from "@/lib/graph";
 import type { Model } from "@/lib/types";
@@ -11,7 +12,13 @@ import Field3D from "./Field3D";
 import NodeCard from "./NodeCard";
 import Roster, { type RosterMode } from "./Roster";
 
-export default function BrainSurface({ initialModel }: { initialModel: Model }) {
+export default function BrainSurface({
+  initialModel,
+  layoutId = null,
+}: {
+  initialModel: Model;
+  layoutId?: string | null;
+}) {
   /* The arrangement now arrives from the server already resolved (app/page.tsx ->
      lib/adapter.ts), so there is no stored layout to wait for. The mount gate stays
      because the canvas measures the window on first paint. */
@@ -20,7 +27,7 @@ export default function BrainSurface({ initialModel }: { initialModel: Model }) 
   if (!mounted) return null;
 
   return (
-    <BrainProvider initialModel={initialModel}>
+    <BrainProvider initialModel={initialModel} layoutId={layoutId}>
       <Surface />
     </BrainProvider>
   );
@@ -28,7 +35,7 @@ export default function BrainSurface({ initialModel }: { initialModel: Model }) 
 
 function Surface() {
   const brain = useBrain();
-  const { model, bump, saveNow, storeNote, savedFlash } = brain;
+  const { model, bump, persist, storeNote, savedFlash, layoutId, addFiles } = brain;
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<number | null>(null);
@@ -173,11 +180,11 @@ function Surface() {
     setTab(t);
   }, []);
 
+  /* Closing a card saves nothing, because every edit inside it already wrote itself. */
   const dismiss = useCallback(() => {
-    saveNow();
     setOpenId(null);
     setTab(null);
-  }, [saveNow]);
+  }, []);
 
   /* ---------------- lock ---------------- */
 
@@ -341,7 +348,16 @@ function Surface() {
     lastWasDrag.current = !!(g && g.live);
     if (g && g.kind === "node" && g.live) {
       bump();
-      saveNow();
+      // Written once the finger lifts, never per frame. upsertLayoutPositionAction
+      // deliberately skips revalidatePath for the same reason — a drag is the most
+      // frequent write on this surface by a wide margin.
+      const moved = model.nodes[g.id];
+      if (moved && layoutId) {
+        // Position only. The stored colour is a token string and this card's `color` is a
+        // palette index — sending one as the other would overwrite a real colour with a
+        // number on every drag. Colour has its own control and its own write.
+        persist(() => upsertLayoutPositionAction({ layoutId, nodeKey: moved.id, x: moved.x, y: moved.y }));
+      }
     }
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
@@ -479,18 +495,19 @@ function Surface() {
         </button>
       </div>
 
-      <div id="undo" className={brain.undone ? "open" : ""}>
+      {/* A notice, not an offer. Removing a card deletes its items, notes and files —
+          including the bytes in Storage — so there is nothing left here to hand back, and
+          a button saying UNDO would be the one thing this surface must never do: claim a
+          write it cannot make. The two-tap confirm on the card is where removal is caught. */}
+      <div id="undo" className={brain.removed ? "open" : ""}>
         <span>
-          {brain.undone ? (
+          {brain.removed ? (
             <>
-              <b>{brain.undone.ref}</b>
-              {" REMOVED" + (brain.undone.quiet ? " · IT WAS EMPTY" : "")}
+              <b>{brain.removed.ref}</b>
+              {" REMOVED" + (brain.removed.quiet ? " · IT WAS EMPTY" : "")}
             </>
           ) : null}
         </span>
-        <button className="act" onClick={brain.undo}>
-          UNDO
-        </button>
       </div>
 
       <div id="wireout" className={wireOpen ? "open" : ""}>
@@ -621,12 +638,8 @@ function Surface() {
                 onControl={(t) => control(id, t)}
                 onState={() => setRoster({ kind: "state", id })}
                 onRemove={() => brain.removeNode(id, true)}
-                onDrop={(names) => {
-                  d.drops = d.drops.concat(
-                    names.map((n) => ({ name: n, size: null, data: null }))
-                  );
-                  bump();
-                  saveNow();
+                onDrop={(dropped) => {
+                  addFiles(id, dropped);
                   control(id, 3);
                 }}
               />
@@ -753,7 +766,9 @@ function Surface() {
             const x = Math.round((vp.clientWidth / 2 - v.x) / v.k) - 95;
             let y = Math.round((vp.clientHeight / 2 - v.y) / v.k) - 58;
             while (collides(model.nodes, model.order, x, y, "box")) y += 172;
-            control(brain.addNode({ x, y }), null);
+            void brain.addNode({ x, y }).then((id) => {
+              if (id) control(id, null);
+            });
           }}
         >
           ADD CARD

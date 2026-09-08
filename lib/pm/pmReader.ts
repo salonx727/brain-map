@@ -135,6 +135,13 @@ function nodeStateRow(r: { node_key: string; state: string; updated_by: string |
  * them in, so the returned node set is always complete for whatever links come back. No
  * parent is invented for it and no relationship beyond the real link is added.
  */
+/** Every PM node's key, for a caller that needs the whole board rather than a scoped subgraph — see getWholeBoardPmLayer. */
+export async function getAllPmNodeKeys(client: SupabaseClient): Promise<string[]> {
+  const { data, error } = await client.from("pm_nodes").select("node_key");
+  if (error) throw new Error(`getAllPmNodeKeys: ${error.message}`);
+  return (data ?? []).map((r) => r.node_key as string);
+}
+
 export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: string[]): Promise<PmLayer> {
   if (nodeKeys.length === 0) {
     return { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [] };

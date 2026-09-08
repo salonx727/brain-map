@@ -1,6 +1,7 @@
 import { getCanonicalGraph } from "@/lib/graph/getCanonicalGraph";
-import { getLayout, getPmLayer } from "@/lib/graph/getPmLayer";
+import { getLayout, getWholeBoardPmLayer } from "@/lib/graph/getPmLayer";
 import { buildModel } from "@/lib/adapter";
+import { signModelFiles } from "@/lib/pm/signModelFiles";
 import BrainSurface from "@/components/BrainSurface";
 
 // Without this, Next.js prerenders this page at build time and a newly published
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const { nodes, connections, sourceError } = await getCanonicalGraph();
-  const pm = await getPmLayer(nodes.map((n) => n.nodeKey));
+  const pm = await getWholeBoardPmLayer(nodes.map((n) => n.nodeKey));
   const layout = await getLayout();
   const positions = new Map((layout?.positions ?? []).map((p) => [p.nodeKey, p]));
 
@@ -27,5 +28,10 @@ export default async function Page() {
     );
   }
 
-  return <BrainSurface initialModel={buildModel(nodes, connections, pm, positions)} />;
+  const model = await signModelFiles(buildModel(nodes, connections, pm, positions));
+
+  // layoutId travels with the model because a dragged card writes its position back, and
+  // a position belongs to a layout. Null when Supabase isn't configured — the surface
+  // then says positions aren't being saved rather than silently dropping them.
+  return <BrainSurface initialModel={model} layoutId={layout?.layout.id ?? null} />;
 }

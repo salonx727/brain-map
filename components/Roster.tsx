@@ -2,6 +2,8 @@
 
 import { useBrain } from "@/lib/brain";
 import { useIntake } from "@/lib/intake";
+import { uiStateToDb } from "@/lib/adapter";
+import { deleteFileAction, setNodeStateAction } from "@/app/actions/pm";
 import { STATES } from "@/lib/seed";
 import type { BrainNode } from "@/lib/types";
 
@@ -23,7 +25,7 @@ export default function Roster({
   provider: string | null;
   setProvider: (p: string | null) => void;
 }) {
-  const { model, bump, saveNow } = useBrain();
+  const { model, bump, persist } = useBrain();
   const intake = useIntake();
 
   const d: BrainNode | null = mode.kind === "state" ? model.nodes[mode.id] ?? null : null;
@@ -71,9 +73,17 @@ export default function Roster({
                   style={{ padding: "13px 15px", fontSize: 10 }}
                   onClick={() => {
                     if (!d) return;
+                    const was = d.state;
                     d.state = st;
                     bump();
-                    saveNow();
+                    // Work state is global per node_key and independent of any layout, so
+                    // it attaches to a canonical engine exactly as it does to a PM card.
+                    persist(
+                      () => setNodeStateAction(d.id, uiStateToDb(st)),
+                      () => {
+                        d.state = was;
+                      },
+                    );
                   }}
                 >
                   {st}
@@ -122,15 +132,22 @@ export default function Roster({
                   </div>
                 ) : (
                   model.unrouted.map((f, i) => (
-                    <div className="item" key={i}>
+                    <div className="item" key={f.id ?? i}>
                       <span>{f.name}</span>
                       <button
                         className="minus"
                         aria-label="Remove"
                         onClick={() => {
+                          const prior = model.unrouted.slice();
                           model.unrouted.splice(i, 1);
                           bump();
-                          saveNow();
+                          if (!f.id) return;
+                          persist(
+                            () => deleteFileAction(f.id as string),
+                            () => {
+                              model.unrouted = prior;
+                            },
+                          );
                         }}
                       >
                         <span />

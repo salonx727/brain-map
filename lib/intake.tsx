@@ -2,8 +2,8 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef } from "react";
 import { useBrain } from "./brain";
-import { readImage } from "./graph";
-import type { Shot } from "./types";
+import { getSignedFileUrlAction, setUiSlotAction, uploadFileAction } from "@/app/actions/pm";
+import type { Drop, Shot } from "./types";
 
 /** Where a pick lands: on the open card, or in the unrouted pile. */
 export type Dest = "node" | "unrouted";
@@ -23,6 +23,14 @@ export function useIntake(): Intake {
   return ctx;
 }
 
+/** One upload. Bytes go to the Server Action, never to Storage from the browser — there is no anon write policy on the bucket (0002_pm_layer.sql). */
+async function upload(file: File, nodeKey: string | null) {
+  const form = new FormData();
+  form.set("file", file);
+  if (nodeKey) form.set("nodeKey", nodeKey);
+  return uploadFileAction(form);
+}
+
 /* Drag and drop does not exist on a phone. These are the way in. */
 export function IntakeProvider({
   openId,
@@ -33,7 +41,7 @@ export function IntakeProvider({
   onUnrouted: () => void;
   children: React.ReactNode;
 }) {
-  const { model, bump, saveNow } = useBrain();
+  const { model, bump, persist, addFiles } = useBrain();
 
   const photos = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
@@ -50,44 +58,32 @@ export function IntakeProvider({
     (list: FileList | null) => {
       const to = dest.current;
       if (!list || !list.length) return;
+      const arr = Array.from(list);
 
       if (to === "unrouted") {
-        Array.from(list).forEach((f) => {
-          model.unrouted.push({ name: f.name, size: f.size, type: f.type || "", data: null });
+        persist(async () => {
+          for (const f of arr) {
+            const record = await upload(f, null);
+            model.unrouted.push({
+              id: record.id,
+              storagePath: record.storagePath,
+              name: record.fileName,
+              size: record.sizeBytes,
+              type: record.contentType ?? undefined,
+              data: null,
+            });
+            bump();
+          }
         });
-        bump();
-        saveNow();
         onUnrouted();
         return;
       }
 
       const id = openIdRef.current;
       if (!id) return;
-      const d = model.nodes[id];
-      if (!d) return;
-
-      const arr = Array.from(list);
-      let left = arr.length;
-      arr.forEach((f) => {
-        const rec = { name: f.name, size: f.size, type: f.type || "", data: null as string | null };
-        const finish = () => {
-          d.drops = d.drops.concat([rec]);
-          if (--left === 0) {
-            bump();
-            saveNow();
-          }
-        };
-        if (f.type && f.type.indexOf("image/") === 0) {
-          readImage(f, (url) => {
-            rec.data = url;
-            finish();
-          });
-        } else {
-          finish();
-        }
-      });
+      addFiles(id, arr);
     },
-    [model, bump, saveNow, onUnrouted]
+    [model, bump, persist, onUnrouted, addFiles],
   );
 
   const takeSlot = useCallback(
@@ -96,18 +92,29 @@ export function IntakeProvider({
       if (!id || !file) return;
       const d = model.nodes[id];
       if (!d) return;
-      readImage(file, (url, w, h) => {
-        if (!url) return;
-        const arr = d.screens.slice();
-        while (arr.length < 4) arr.push(null);
-        const shot: Shot = { name: file.name, data: url, w, h };
-        arr[index] = shot;
-        d.screens = arr;
-        bump();
-        saveNow();
-      });
+
+      const prior = d.screens.slice();
+      persist(
+        async () => {
+          const form = new FormData();
+          form.set("file", file);
+          form.set("nodeKey", id);
+          form.set("slotIndex", String(index));
+          const record = await setUiSlotAction(form);
+          const url = await getSignedFileUrlAction(record.storagePath);
+          const arr = d.screens.slice();
+          while (arr.length < 4) arr.push(null);
+          const shot: Shot = { id: record.id, storagePath: record.storagePath, name: record.fileName, data: url };
+          arr[index] = shot;
+          d.screens = arr;
+          bump();
+        },
+        () => {
+          d.screens = prior;
+        },
+      );
     },
-    [model, bump, saveNow]
+    [model, bump, persist],
   );
 
   const value = useMemo<Intake>(
@@ -129,7 +136,7 @@ export function IntakeProvider({
         slot.current?.click();
       },
     }),
-    []
+    [],
   );
 
   const hidden: React.CSSProperties = {

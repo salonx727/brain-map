@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { TAGS } from "@/lib/seed";
-import { counts, namesFrom } from "@/lib/graph";
+import { counts } from "@/lib/graph";
 import type { BrainNode } from "@/lib/types";
 
 /* No Control X. That grammar is SALON X platform canon (§37) and this
@@ -30,7 +30,8 @@ export default function NodeCard({
   onControl: (tab: number) => void;
   onState: () => void;
   onRemove: () => void;
-  onDrop: (names: string[]) => void;
+  /** Real files only — a drag of bare filenames has no bytes to store, so it is ignored rather than filed as an empty row. */
+  onDrop: (files: FileList) => void;
 }) {
   const [holding, setHolding] = useState(false);
   const [over, setOver] = useState(false);
@@ -102,9 +103,8 @@ export default function NodeCard({
         e.preventDefault();
         e.stopPropagation();
         setOver(false);
-        const names = namesFrom(e.dataTransfer);
-        if (!names.length) return;
-        onDrop(names);
+        if (!e.dataTransfer.files?.length) return;
+        onDrop(e.dataTransfer.files);
       }}
     >
       <div className="n-ref mono">

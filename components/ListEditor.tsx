@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { useBrain } from "@/lib/brain";
 import { splitCitation } from "@/lib/graph";
+import {
+  createItemAction,
+  deleteItemAction,
+  updateItemStatusAction,
+  updateItemTitleAction,
+} from "@/app/actions/pm";
 import type { BrainNode, Item } from "@/lib/types";
 import EditableLine from "./EditableLine";
 
@@ -14,12 +20,11 @@ const EMPTY: Record<Field, string> = {
   subs: "No sub-nodes yet.",
 };
 
-/** A save written before items carried a citation holds bare strings. */
-function migrate(it: Item): Item {
-  return typeof (it as unknown) === "string"
-    ? { text: it as unknown as string, done: false, sec: "" }
-    : it;
-}
+/** pm_items has one kind column and this component edits two of its three lists. */
+const ITEM_KIND: Partial<Record<Field, "todo" | "blocker">> = {
+  todos: "todo",
+  blockers: "blocker",
+};
 
 /* A list you read, not a form you edit. Rows carry a done mark, the line at
    reading size, and the citation that says where the item came from. */
@@ -36,22 +41,41 @@ export default function ListEditor({
   title?: string;
   onPromote?: (item: Item, index: number) => void;
 }) {
-  const { bump, saveNow, saveSoon } = useBrain();
+  const { bump, persist } = useBrain();
   const [draft, setDraft] = useState("");
 
-  /* every item is stored as an object; older strings are migrated on read */
-  d[field] = d[field].map(migrate);
-
   const list = d[field];
+  const kind = ITEM_KIND[field];
 
   const commit = () => {
     const v = draft.trim();
     if (!v) return;
     const { text, sec } = splitCitation(v);
-    d[field] = list.concat([{ text, done: false, sec }]);
     setDraft("");
+
+    if (!kind) {
+      // subs are handled by the panel's own promote path, which creates a real PM node.
+      d[field] = list.concat([{ text, done: false, sec }]);
+      bump();
+      return;
+    }
+
+    // Shown immediately without an id, then given the real one when the row exists. Until
+    // then the row cannot be toggled or retitled, because there is nothing yet to address.
+    const entry: Item = { text, done: false, sec };
+    d[field] = list.concat([entry]);
     bump();
-    saveNow();
+
+    persist(
+      async () => {
+        const created = await createItemAction({ kind, title: text, nodeKey: d.id });
+        entry.id = created.id;
+        bump();
+      },
+      () => {
+        d[field] = d[field].filter((x) => x !== entry);
+      },
+    );
   };
 
   return (
@@ -62,15 +86,23 @@ export default function ListEditor({
         <div className="none">{EMPTY[field]}</div>
       ) : (
         list.map((item, i) => (
-          <div key={i} className={"listrow" + (item.done ? " is-done" : "")}>
+          <div key={item.id ?? i} className={"listrow" + (item.done ? " is-done" : "")}>
             {field === "todos" ? (
               <button
                 className={"mark" + (item.done ? " done" : "")}
                 aria-label={item.done ? "Mark not done" : "Mark done"}
+                disabled={!item.id}
                 onClick={() => {
-                  item.done = !item.done;
+                  if (!item.id) return;
+                  const was = item.done;
+                  item.done = !was;
                   bump();
-                  saveNow();
+                  persist(
+                    () => updateItemStatusAction(item.id as string, item.done ? "done" : "next_action"),
+                    () => {
+                      item.done = was;
+                    },
+                  );
                 }}
               />
             ) : null}
@@ -81,9 +113,13 @@ export default function ListEditor({
                 onInput={(value) => {
                   item.text = value;
                   bump();
-                  saveSoon();
                 }}
-                onBlur={saveNow}
+                onBlur={() => {
+                  if (!item.id) return;
+                  const next = item.text.trim();
+                  if (!next) return;
+                  persist(() => updateItemTitleAction(item.id as string, next));
+                }}
               />
               {item.sec ? <div className="sub">{item.sec}</div> : null}
             </div>
@@ -102,9 +138,16 @@ export default function ListEditor({
               className="minus"
               aria-label="Remove"
               onClick={() => {
+                const priorList = list.slice();
                 d[field] = list.filter((_, k) => k !== i);
                 bump();
-                saveNow();
+                if (!item.id) return; // never reached the database; nothing to delete
+                persist(
+                  () => deleteItemAction(item.id as string),
+                  () => {
+                    d[field] = priorList;
+                  },
+                );
               }}
             >
               <span />

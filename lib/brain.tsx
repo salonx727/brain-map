@@ -9,28 +9,39 @@ import {
   useState,
 } from "react";
 import { counts, isEmpty, linksOf } from "./graph";
-import type { BrainNode, Drop, Link, Model, Shape } from "./types";
+import {
+  createPmNodeAction,
+  deletePmNodeAction,
+  getSignedFileUrlAction,
+  uploadFileAction,
+} from "@/app/actions/pm";
+import type { BrainNode, Model, Shape } from "./types";
 
 /* Model itself now lives in ./types, because the server builds one before any of this
    client module exists. Re-exported so every existing `from "@/lib/brain"` import keeps
    working untouched. */
 export type { Model };
 
-type Trash = {
-  node: BrainNode;
-  links: Link[];
-  index: number;
-  at: number;
-};
+/* The arrangement is read server-side from the canonical COYOTE mirror plus the PM layer
+   (lib/adapter.ts) and handed in whole. Edits go back the same way — one Server Action per
+   kind of change, never a whole-model blob, because the PM layer is relational and a
+   to-do, a wire and a position are separate rows with separate lifetimes.
 
-/* The arrangement no longer comes from localStorage. It is read server-side from the
-   canonical COYOTE mirror plus the PM layer (lib/adapter.ts) and handed in whole, so the
-   surface renders real nodes, real to-dos and real wires on first paint.
+   There is deliberately no generic save() here any more. A single "save the model" call
+   cannot exist against a relational backend without diffing, and the version of it that
+   used to sit in this file did nothing at all while every call site believed otherwise.
+   Removing it is what guarantees a new call site has to name the write it intends. */
+/* Idle is silent. The chrome shares this line with the lock hints, so a standing "all
+   good" message would sit on top of them forever; a completed write announces itself
+   through the SAVED flash instead. What does stay up is a failure, until the next write
+   either succeeds or fails in its own right. */
+const IDLE_NOTE = "";
+const SAVING_NOTE = "SAVING…";
 
-   Writes are not wired to the backend yet. Rather than let an edit look saved and vanish
-   on reload — the single failure this whole rebuild exists to stop making — saveNow()
-   below stays honest and the surface carries a standing note saying so. */
-const NOT_WIRED_NOTE = "READ-ONLY · EDITS ARE NOT SAVED YET";
+function messageOf(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  return raw.length > 120 ? raw.slice(0, 117) + "…" : raw;
+}
 
 export type Brain = {
   model: Model;
@@ -38,11 +49,26 @@ export type Brain = {
   bump: () => void;
   version: number;
 
-  saveNow: () => void;
-  saveSoon: () => void;
+  /**
+   * Sends one change to the database.
+   *
+   * Callers mutate the model first so the surface responds immediately, then hand the
+   * write and the way to take it back. On failure the rollback runs, the surface returns
+   * to what is actually stored, and the note says why — the flash never fires for a write
+   * that did not land, which is the whole reason this is not fire-and-forget.
+   */
+  persist: (run: () => Promise<unknown>, rollback?: () => void) => void;
   storeNote: string;
   savedFlash: boolean;
 
+  /**
+   * Files onto a card: uploaded, then shown. Lives here rather than in IntakeProvider
+   * because the canvas drops files too, and the canvas sits outside that provider — a
+   * write intent belongs with the other write intents, not with the file pickers.
+   */
+  addFiles: (nodeId: string, files: FileList | File[]) => void;
+
+  /** Creates a real PM node. Resolves to its permanent node_key, or null if the write failed. */
   addNode: (opts: {
     x: number;
     y: number;
@@ -50,13 +76,25 @@ export type Brain = {
     name?: string;
     shape?: Shape;
     wireTo?: string | null;
-  }) => string;
+  }) => Promise<string | null>;
   removeNode: (id: string, quiet: boolean) => void;
-  undo: () => void;
-  /** what was taken back, for the twelve-second offer */
-  undone: { ref: string; quiet: boolean } | null;
+  /** What was just removed, for the standing notice. Removal is permanent — see removeNode. */
+  removed: { ref: string; quiet: boolean } | null;
   reset: () => void;
   isEmpty: (id: string) => boolean;
+  /**
+   * Whether this card's own content can be edited here at all. False for every canonical
+   * node: its name and identity come from COYOTE, which this app reads and never writes.
+   * To-dos, files, wires and position attach to a canonical node freely — those live in
+   * the PM layer. Only the node itself is untouchable.
+   */
+  canEditNode: (id: string) => boolean;
+  /**
+   * The layout every saved position belongs to. Null when Supabase is not configured, in
+   * which case dragging still moves cards on screen but nothing is written — the surface
+   * says so rather than pretending.
+   */
+  layoutId: string | null;
 };
 
 const BrainCtx = createContext<Brain | null>(null);
@@ -67,157 +105,213 @@ export function useBrain(): Brain {
   return ctx;
 }
 
-export function BrainProvider({ initialModel, children }: { initialModel: Model; children: React.ReactNode }) {
+export function BrainProvider({
+  initialModel,
+  layoutId = null,
+  children,
+}: {
+  initialModel: Model;
+  layoutId?: string | null;
+  children: React.ReactNode;
+}) {
   const modelRef = useRef<Model>(initialModel);
-  const seqRef = useRef<number>(initialModel.order.length);
 
   const [version, setVersion] = useState(0);
-  const [storeNote, setStoreNote] = useState(NOT_WIRED_NOTE);
-  /* Stays false while writes are unwired — see saveNow(). */
-  const [savedFlash] = useState(false);
-  const [undone, setUndone] = useState<{ ref: string; quiet: boolean } | null>(null);
+  const [storeNote, setStoreNote] = useState(IDLE_NOTE);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [removed, setRemoved] = useState<{ ref: string; quiet: boolean } | null>(null);
 
-  const trashRef = useRef<Trash | null>(null);
-  const saveTimer = useRef<number | null>(null);
-  const undoTimer = useRef<number | null>(null);
+  const inflight = useRef(0);
+  const flashTimer = useRef<number | null>(null);
+  const removedTimer = useRef<number | null>(null);
 
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
-  /* Intentionally does not persist, and intentionally does not flash "saved" either —
-     the flash is the surface's only signal that something was written, and firing it
-     against a no-op is exactly how a person comes to believe they saved something they
-     did not. The standing note stays up instead. */
-  const saveNow = useCallback(() => {
-    setStoreNote(NOT_WIRED_NOTE);
-  }, []);
+  const persist = useCallback(
+    (run: () => Promise<unknown>, rollback?: () => void) => {
+      inflight.current += 1;
+      setStoreNote(SAVING_NOTE);
+      run()
+        .then(() => {
+          inflight.current -= 1;
+          // Only the last write standing announces itself, so a burst of edits reads as
+          // one "saved" rather than a strobe.
+          if (inflight.current > 0) return;
+          setStoreNote(IDLE_NOTE);
+          setSavedFlash(true);
+          if (flashTimer.current) window.clearTimeout(flashTimer.current);
+          flashTimer.current = window.setTimeout(() => setSavedFlash(false), 1600);
+        })
+        .catch((err: unknown) => {
+          inflight.current -= 1;
+          rollback?.();
+          bump();
+          setStoreNote("NOT SAVED · " + messageOf(err));
+        });
+    },
+    [bump],
+  );
 
-  const saveSoon = useCallback(() => {
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(saveNow, 400);
-  }, [saveNow]);
+  const addFiles = useCallback(
+    (nodeId: string, list: FileList | File[]) => {
+      const d = modelRef.current.nodes[nodeId];
+      const arr = Array.from(list);
+      if (!d || !arr.length) return;
 
-  /* ---------------- create · a new card wires itself ---------------- */
+      persist(async () => {
+        for (const f of arr) {
+          const form = new FormData();
+          form.set("file", f);
+          form.set("nodeKey", nodeId);
+          const record = await uploadFileAction(form);
+          // Bytes are private, so the surface shows a signed link to the row that now
+          // exists — never the local File, which looks identical and disappears on reload.
+          const url = record.contentType?.startsWith("image/")
+            ? await getSignedFileUrlAction(record.storagePath)
+            : null;
+          d.drops = d.drops.concat([
+            {
+              id: record.id,
+              storagePath: record.storagePath,
+              name: record.fileName,
+              size: record.sizeBytes,
+              type: record.contentType ?? undefined,
+              data: url,
+            },
+          ]);
+          bump();
+        }
+      });
+    },
+    [bump, persist],
+  );
+
+  /* ---------------- create ---------------- */
   const addNode = useCallback(
-    (opts: {
+    async (opts: {
       x: number;
       y: number;
       ref?: string;
       name?: string;
       shape?: Shape;
       wireTo?: string | null;
-    }) => {
+    }): Promise<string | null> => {
       const m = modelRef.current;
-      seqRef.current += 1;
-      const seq = seqRef.current;
-      const id = "n" + seq + "-" + Date.now().toString(36);
-      const shape: Shape = opts.shape || "box";
-      m.nodes[id] = {
-        id,
-        ref: opts.ref || "N" + seq,
-        shape,
-        x: opts.x,
-        y: opts.y,
-        name: opts.name || "",
-        sec: "",
-        color: null,
-        state: "UNTOUCHED",
-        origin: "user",
-        subs: [],
-        todos: [],
-        blockers: [],
-        screens: [],
-        drops: [],
-      };
-      m.order.push(id);
-      if (opts.wireTo && m.nodes[opts.wireTo]) {
-        m.links.push({ a: opts.wireTo, b: id, fromPromote: true });
+      inflight.current += 1;
+      setStoreNote(SAVING_NOTE);
+      try {
+        // The database assigns node_key and display_ref; nothing is placed on the canvas
+        // until it does. A temporary local id would have to be swapped for the real one
+        // across nodes, order, links and whatever card is open — and any of those missed
+        // is a card that silently stops saving.
+        const created = await createPmNodeAction({
+          label: opts.name || "",
+          parentNodeKey: opts.wireTo ?? null,
+        });
+
+        m.nodes[created.nodeKey] = {
+          id: created.nodeKey,
+          ref: created.displayRef,
+          shape: opts.shape || "box",
+          x: opts.x,
+          y: opts.y,
+          name: created.label,
+          sec: "",
+          color: null,
+          state: "UNTOUCHED",
+          origin: "user",
+          subs: [],
+          todos: [],
+          blockers: [],
+          screens: [],
+          drops: [],
+        };
+        m.order.push(created.nodeKey);
+        inflight.current -= 1;
+        if (inflight.current === 0) {
+          setStoreNote(IDLE_NOTE);
+          setSavedFlash(true);
+          if (flashTimer.current) window.clearTimeout(flashTimer.current);
+          flashTimer.current = window.setTimeout(() => setSavedFlash(false), 1600);
+        }
+        bump();
+        return created.nodeKey;
+      } catch (err) {
+        inflight.current -= 1;
+        setStoreNote("NOT SAVED · " + messageOf(err));
+        bump();
+        return null;
       }
-      bump();
-      saveNow();
-      return id;
     },
-    [bump, saveNow]
+    [bump],
   );
 
-  /* ---------------- removal · recoverable for twelve seconds ---------------- */
+  /* ---------------- removal · permanent ----------------
+     deletePmNode clears the node's files from Storage along with its items, notes,
+     references and state. None of that can be handed back twelve seconds later, so the
+     old undo offer is gone rather than kept as a button that cannot do what it says. The
+     two-tap confirm on the card is the real guard. */
   const removeNode = useCallback(
     (id: string, quiet: boolean) => {
       const m = modelRef.current;
       const d = m.nodes[id];
       if (!d) return;
-      trashRef.current = {
-        node: d,
-        links: linksOf(m.links, id).slice(),
-        index: m.order.indexOf(id),
-        at: Date.now(),
-      };
+
+      const priorLinks = linksOf(m.links, id).slice();
+      const priorIndex = m.order.indexOf(id);
+
       m.links = m.links.filter((l) => l.a !== id && l.b !== id);
       m.order = m.order.filter((o) => o !== id);
       delete m.nodes[id];
       bump();
-      saveNow();
-      setUndone({ ref: d.ref, quiet });
-      if (undoTimer.current) window.clearTimeout(undoTimer.current);
-      undoTimer.current = window.setTimeout(() => setUndone(null), 12000);
+
+      persist(
+        () => deletePmNodeAction(id),
+        () => {
+          m.nodes[id] = d;
+          m.order.splice(Math.min(priorIndex, m.order.length), 0, id);
+          priorLinks.forEach((l) => m.links.push(l));
+        },
+      );
+
+      setRemoved({ ref: d.ref, quiet });
+      if (removedTimer.current) window.clearTimeout(removedTimer.current);
+      removedTimer.current = window.setTimeout(() => setRemoved(null), 8000);
     },
-    [bump, saveNow]
+    [bump, persist],
   );
 
-  const undo = useCallback(() => {
-    const t = trashRef.current;
-    if (!t) return;
-    const m = modelRef.current;
-    m.nodes[t.node.id] = t.node;
-    m.order.splice(Math.min(t.index, m.order.length), 0, t.node.id);
-    t.links.forEach((l) => m.links.push(l));
-    trashRef.current = null;
-    bump();
-    saveNow();
-    setUndone(null);
-  }, [bump, saveNow]);
-
-  /* Pressed on purpose, never automatic. Now that the arrangement is served rather than
-     stored locally, there is no local copy left to clear — reloading re-reads the real
-     one, which discards this session's unsaved edits and nothing else. */
+  /* Pressed on purpose, never automatic. Everything lives in the database now, so this
+     re-reads it — which discards nothing except a failed edit still sitting on screen. */
   const reset = useCallback(() => {
     window.location.reload();
   }, []);
 
   const isEmptyCb = useCallback(
     (id: string) => isEmpty(modelRef.current.nodes, modelRef.current.links, id),
-    []
+    [],
   );
+
+  const canEditNode = useCallback((id: string) => modelRef.current.nodes[id]?.origin === "user", []);
 
   const value = useMemo<Brain>(
     () => ({
       model: modelRef.current,
       bump,
       version,
-      saveNow,
-      saveSoon,
+      persist,
       storeNote,
       savedFlash,
+      addFiles,
       addNode,
       removeNode,
-      undo,
-      undone,
+      removed,
       reset,
       isEmpty: isEmptyCb,
+      canEditNode,
+      layoutId,
     }),
-    [
-      bump,
-      version,
-      saveNow,
-      saveSoon,
-      storeNote,
-      savedFlash,
-      addNode,
-      removeNode,
-      undo,
-      undone,
-      reset,
-      isEmptyCb,
-    ]
+    [bump, version, persist, storeNote, savedFlash, addFiles, addNode, removeNode, removed, reset, isEmptyCb, canEditNode, layoutId],
   );
 
   return <BrainCtx.Provider value={value}>{children}</BrainCtx.Provider>;
@@ -229,7 +323,12 @@ export function resetTally(model: Model): { placed: number; items: number } {
     placed: model.order.length,
     items: model.order.reduce(
       (a, id) => a + counts(model.nodes[id]).reduce((x, y) => x + y, 0),
-      0
+      0,
     ),
   };
+}
+
+/** Kept beside the provider so a card can ask what it is without importing the model's types. */
+export function isCanonical(node: BrainNode): boolean {
+  return node.origin === "canon";
 }

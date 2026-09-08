@@ -17,25 +17,46 @@ npm run verify   # drives a real browser: write, reload, then read
 | Path | What lives there |
 | --- | --- |
 | `app/globals.css` | canon tokens and every component style |
-| `lib/seed.ts` | the transcribed sheet: 13 nodes, 21 edges |
-| `lib/store.ts` | localStorage persistence |
-| `lib/graph.ts` | counts, collision, free-slot placement, image intake |
+| `lib/seed.ts` | the transcribed sheet: shapes and starting positions only |
+| `lib/adapter.ts` | Supabase rows in, the surface's own model out |
+| `lib/brain.tsx` | every write intent, one Server Action each |
+| `app/actions/pm.ts` | the only place the service-role credential exists |
+| `lib/graph.ts` | counts, collision, free-slot placement |
 | `components/BrainSurface.tsx` | the flat map: pan, zoom, drag, lock |
 | `components/ControlPanel.tsx` | the five tabs on a card |
 | `components/Field3D.tsx` | the derived 3D field |
 
+## Where the map comes from
+
+Nothing is held in the browser. The surface is read per request from the
+canonical COYOTE mirror plus the PM layer, and every edit goes back the same
+way — one Server Action per kind of change, never a whole-model blob, because a
+to-do, a wire and a position are separate rows with separate lifetimes.
+
+That split decides what a card will let you do:
+
+- **A canonical card is COYOTE's.** Its name and ref are read, never written,
+  and it has no delete. To-dos, files, wires, colour and position attach to it
+  freely — those are PM rows that point at the node, not the node itself.
+- **A wire needs at least one PM endpoint.** Two canonical engines are joined by
+  COYOTE or not at all, and a database trigger enforces it. A COYOTE-declared
+  edge shows as CANON and has no remove button.
+- **Removing a card is permanent.** It clears the node's items, notes and files,
+  including the bytes in Storage, so there is no undo offered — the two-tap
+  confirm is the guard.
+
 ## Rulings this port keeps
 
-- **An arrangement stays put.** Only an explicit RESET undoes it. If a stored
-  layout cannot be read, the surface says so and changes nothing — it never
-  silently substitutes the seed.
+- **An arrangement stays put.** A dragged card writes its position when the
+  finger lifts. If the map cannot be read, the surface says so and changes
+  nothing — it never silently substitutes the seed.
 - **No Control X.** §37's minus-only dismissal is platform canon for client
   surfaces; this internal tool does not inherit it. A tap opens a card.
 - **The card name holds a constant screen size.** Below 55% zoom everything
   else fades out rather than shrinking, so the overview stays readable.
-- **Images are deliberately not stored.** Filenames and sizes persist; the
-  pictures do not, because a few phone photos would exhaust the quota and evict
-  the arrangement.
+- **Files are stored, and stored privately.** Bytes go to a bucket with no anon
+  read policy and reach the browser only through a signed link, minted per page
+  load. The prototype's session-only data URLs are gone.
 
 ## Fixed in the port
 
