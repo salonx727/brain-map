@@ -90,6 +90,24 @@ export interface Diagnostic {
   severity: DiagnosticSeverity;
   nodeKey?: string;
   message: string;
+  /**
+   * Present only on the warning raised for a blocker or open question that names no
+   * engine. The item travels alongside its message rather than only inside it, because
+   * the map places these on an owner card (see lib/owners.ts) and reconstructing an item
+   * by re-parsing English out of `message` would break the first time the wording moved.
+   *
+   * Stored in canonical_snapshots.diagnostics, which is jsonb and holds whatever shape
+   * this type has — no migration was needed to start carrying it.
+   */
+  unattributed?: UnattributedItem;
+}
+
+export interface UnattributedItem {
+  kind: "blocker" | "open question";
+  text: string;
+  sourceSection: string;
+  qId?: string;
+  status?: string;
 }
 
 /**

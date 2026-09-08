@@ -15,8 +15,9 @@
 
 import { SEED } from "./seed";
 import type { BrainNode, Drop, Item, Link, Model, NodeState, Shape, Shot } from "./types";
-import type { CanonicalConnection, CanonicalNode } from "@/lib/types/canonicalNode";
+import type { CanonicalConnection, CanonicalNode, Diagnostic } from "@/lib/types/canonicalNode";
 import type { PmLayer, PmLayoutPosition, PmNodeWorkState } from "@/lib/types/pm";
+import { OWNERS, unattributedFrom } from "@/lib/owners";
 
 /** The database spells states with underscores; this UI's own NodeState uses spaces. Converted here and nowhere else. */
 const DB_TO_UI_STATE: Record<PmNodeWorkState, NodeState> = {
@@ -73,6 +74,7 @@ export function buildModel(
   connections: CanonicalConnection[],
   pm: PmLayer,
   positions: Map<string, PmLayoutPosition>,
+  diagnostics: Diagnostic[] = [],
 ): Model {
   // Screens are canonical but are not engine-graph nodes — Shawn's ruling, 2026-09-07.
   // The sheet contains none either, so this keeps the two in agreement rather than
@@ -125,6 +127,46 @@ export function buildModel(
     }
 
     order.push(node.nodeKey);
+  }
+
+  // The owner cards. Built after the canonical loop and before the PM one because they
+  // are neither: their identity is fixed here rather than in COYOTE (nothing in canon
+  // declares a person), and they are not user-created, so `canon` origin is what keeps
+  // them from being renamed or deleted like a card someone added.
+  //
+  // Everything they hold is read-only for the same reason an engine's canon items are —
+  // there is no row to edit and the next publish would restore it. But the card itself
+  // is a real node with a real key, so a hand-typed to-do, a dropped file, a work state
+  // or a wire attaches to it exactly as it would to an engine.
+  const loose = unattributedFrom(diagnostics);
+  for (const owner of OWNERS) {
+    const saved = positions.get(owner.nodeKey);
+    nodes[owner.nodeKey] = emptyNode(
+      owner.nodeKey,
+      owner.ref,
+      owner.shape,
+      saved?.x ?? owner.x,
+      saved?.y ?? owner.y,
+      owner.name,
+      owner.sec,
+      "canon",
+    );
+    const target = nodes[owner.nodeKey];
+    for (const item of loose) {
+      if (item.kind !== owner.takes) continue;
+      const detail = [item.qId, item.status].filter(Boolean).join(" · ");
+      const entry: Item = {
+        text: item.text,
+        done: (item.status ?? "").toUpperCase() === "CLOSED",
+        sec: detail ? `${item.sourceSection} · ${detail}` : item.sourceSection,
+        canon: true,
+      };
+      // Same tab an engine's items go to, so BLK means §15 and TO DO means §00a
+      // everywhere on the map rather than meaning one thing per card class.
+      if (item.kind === "blocker") target.blockers.push(entry);
+      else target.todos.push(entry);
+    }
+    order.push(owner.nodeKey);
   }
 
   for (const pmNode of pm.nodes) {

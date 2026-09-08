@@ -2,6 +2,7 @@ import { getCanonicalGraph } from "@/lib/graph/getCanonicalGraph";
 import { getLayout, getWholeBoardPmLayer } from "@/lib/graph/getPmLayer";
 import { buildModel } from "@/lib/adapter";
 import { signModelFiles } from "@/lib/pm/signModelFiles";
+import { OWNER_KEYS } from "@/lib/owners";
 import BrainSurface from "@/components/BrainSurface";
 
 // Without this, Next.js prerenders this page at build time and a newly published
@@ -10,8 +11,10 @@ import BrainSurface from "@/components/BrainSurface";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const { nodes, connections, sourceError } = await getCanonicalGraph();
-  const pm = await getWholeBoardPmLayer(nodes.map((n) => n.nodeKey));
+  const { nodes, connections, diagnostics, sourceError } = await getCanonicalGraph();
+  // Owner keys join the canonical ones because an owner card is a real node: anything
+  // hand-typed onto it lives in the same pm_* tables, keyed the same way.
+  const pm = await getWholeBoardPmLayer([...nodes.map((n) => n.nodeKey), ...OWNER_KEYS]);
   const layout = await getLayout();
   const positions = new Map((layout?.positions ?? []).map((p) => [p.nodeKey, p]));
 
@@ -28,7 +31,7 @@ export default async function Page() {
     );
   }
 
-  const model = await signModelFiles(buildModel(nodes, connections, pm, positions));
+  const model = await signModelFiles(buildModel(nodes, connections, pm, positions, diagnostics));
 
   // layoutId travels with the model because a dragged card writes its position back, and
   // a position belongs to a layout. Null when Supabase isn't configured — the surface

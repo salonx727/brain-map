@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BrainProvider, resetTally, useBrain } from "@/lib/brain";
 import { IntakeProvider } from "@/lib/intake";
 import { upsertLayoutPositionAction } from "@/app/actions/pm";
-import { COUNTERS, SIZE } from "@/lib/seed";
+import { SIZE } from "@/lib/seed";
 import { centreOf, collides, linksOf, otherEnd } from "@/lib/graph";
 import type { Model } from "@/lib/types";
 import ControlPanel from "./ControlPanel";
@@ -113,12 +113,6 @@ function Surface() {
       y1 = Math.min(y1, d.y);
       x2 = Math.max(x2, d.x + s[0] + 24);
       y2 = Math.max(y2, d.y + s[1] + 12);
-    });
-    COUNTERS.forEach((c) => {
-      x1 = Math.min(x1, c[3]);
-      y1 = Math.min(y1, c[4]);
-      x2 = Math.max(x2, c[3] + 208);
-      y2 = Math.max(y2, c[4] + 140);
     });
     return { x1, y1, x2, y2 };
   }, [model]);
@@ -646,19 +640,10 @@ function Surface() {
             );
           })}
 
-          {COUNTERS.map((c) => (
-            <div className="counter" key={c[0]} style={{ left: c[3], top: c[4] }}>
-              <div className="r">
-                <span>MESSAGES</span>
-                <b>{c[1]}</b>
-              </div>
-              <div className="who mono">{c[0].toUpperCase()}</div>
-              <div className="r">
-                <span>TO DO</span>
-                <b>{c[2]}</b>
-              </div>
-            </div>
-          ))}
+          {/* CODEMAN and SHAWN used to be drawn here as two counters with their numbers
+              typed into seed.ts. They are real cards now, rendered by the loop above with
+              every other node and carrying the work COYOTE names but attaches to no
+              engine — so the numbers on them are counted, not written down. */}
 
           {/* one door. AI and intake live behind it. */}
           <div

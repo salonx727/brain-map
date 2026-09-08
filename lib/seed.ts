@@ -55,10 +55,9 @@ export const WIRES: [string, string, string, boolean?][] = [
   ["E10", "E11", "§35.11 DOWNSTREAM — network position"],
 ];
 
-export const COUNTERS: [string, number, number, number, number][] = [
-  ["Codeman", 3, 6, -470, 1420],
-  ["Shawn", 2, 21, 224, 1420],
-];
+/* CODEMAN and SHAWN were two counters here with their MESSAGES and TO DO totals typed
+   in by hand. They are real cards now and count their own work — see lib/owners.ts,
+   which keeps these exact coordinates. */
 
 export const TAGS: { key: TagKey; label: string }[] = [
   { key: "screens", label: "UI" },

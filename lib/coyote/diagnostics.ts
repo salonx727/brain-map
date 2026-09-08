@@ -16,6 +16,15 @@ function unattributedItemToDiagnostic(item: AttributedItem, kind: "blocker" | "o
   return {
     severity: "warning",
     message: `Unattributed ${kind} (${item.sourceSection}): ${idPrefix}${item.text}`,
+    // The same fact in a shape a UI can place. The message stays exactly as it was —
+    // it is what a diagnostics reader shows — and this rides along for the owner cards.
+    unattributed: {
+      kind,
+      text: item.text,
+      sourceSection: item.sourceSection,
+      ...(item.qId ? { qId: item.qId } : {}),
+      ...(item.status ? { status: item.status } : {}),
+    },
   };
 }
 
