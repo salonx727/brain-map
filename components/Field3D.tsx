@@ -78,7 +78,18 @@ function layout3(nodes: Nodes, order: string[], links: Link[]): Record<string, P
     });
   });
   loose.forEach((id, i) => {
-    pts[id] = { x: -520, y: -180 + i * 130, z: 260, r: 15, loose: true };
+    // Independent cards used to sit at x: -520, which is off the default camera.
+    // A card you just made that is not wired yet still belongs in the field — it
+    // just has no edges yet. Ring them in front of the spine so they are findable.
+    const n = Math.max(loose.length, 1);
+    const a = (i / n) * Math.PI * 2 - 0.4;
+    pts[id] = {
+      x: Math.cos(a) * (90 + n * 18),
+      y: Math.sin(a) * (70 + n * 12),
+      z: 380,
+      r: 16,
+      loose: true,
+    };
   });
   return pts;
 }
@@ -98,7 +109,7 @@ export default function Field3D({
   setFocus: (id: string | null) => void;
   resetNonce: number;
 }) {
-  const { model } = useBrain();
+  const { model, version } = useBrain();
   const cvRef = useRef<HTMLCanvasElement>(null);
 
   const view = useRef({
@@ -186,8 +197,7 @@ export default function Field3D({
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     };
 
-    /* derived on entry, discarded on exit */
-    pts.current = layout3(model.nodes, model.order, model.links);
+    /* Camera reset belongs to entering the field, not to a card being added. */
     resize3();
     const v = view.current;
     v.yaw = -0.42;
@@ -349,7 +359,15 @@ export default function Field3D({
       pts.current = {};
       hits.current = [];
     };
-  }, [open, model, project3]);
+  }, [open, project3]);
+
+  /* Re-derive whenever the graph changes. Without this a card added while the field
+     is open (or added on the flat map then revealed here) has no point in pts, so
+     draw3 skips it and the card is simply not there. Camera stays put. */
+  useEffect(() => {
+    if (!open) return;
+    pts.current = layout3(model.nodes, model.order, model.links);
+  }, [open, version, model]);
 
   /* reset lives on the readout, not on a gesture, so a pinch can never fire it */
   useEffect(() => {

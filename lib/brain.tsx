@@ -10,10 +10,12 @@ import {
 } from "react";
 import { counts, isEmpty, linksOf } from "./graph";
 import {
+  createNodeLinkAction,
   createPmNodeAction,
   deletePmNodeAction,
   getSignedFileUrlAction,
   uploadFileAction,
+  upsertLayoutPositionAction,
 } from "@/app/actions/pm";
 import type { BrainNode, Model, Shape } from "./types";
 
@@ -227,6 +229,29 @@ export function BrainProvider({
           drops: [],
         };
         m.order.push(created.nodeKey);
+
+        // parent_node_key is nesting, not a drawn wire. The 3D field and the SVG
+        // paths both read model.links; without a pm_node_links row the new card
+        // has no edges, layout3 parks it off-camera, and "WIRED TO THIS CARD"
+        // looked like it did nothing.
+        if (opts.wireTo && m.nodes[opts.wireTo]) {
+          try {
+            const row = await createNodeLinkAction({ fromNodeKey: created.nodeKey, toNodeKey: opts.wireTo });
+            m.links.push({ id: row.id, a: created.nodeKey, b: opts.wireTo, fromPromote: true });
+          } catch (err) {
+            setStoreNote("CARD SAVED · WIRE NOT SAVED · " + messageOf(err));
+          }
+        }
+
+        if (layoutId) {
+          try {
+            await upsertLayoutPositionAction({ layoutId, nodeKey: created.nodeKey, x: opts.x, y: opts.y });
+          } catch {
+            // Position is still on the canvas this session; a reload drops it to the
+            // unplaced row. Not worth refusing the card over.
+          }
+        }
+
         inflight.current -= 1;
         if (inflight.current === 0) {
           setStoreNote(IDLE_NOTE);
@@ -243,7 +268,7 @@ export function BrainProvider({
         return null;
       }
     },
-    [bump],
+    [bump, layoutId],
   );
 
   /* ---------------- removal · permanent ----------------

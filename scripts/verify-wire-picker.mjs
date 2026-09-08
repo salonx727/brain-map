@@ -1,0 +1,20 @@
+import { chromium } from "playwright";
+
+const url = process.argv[2] ?? "http://localhost:3014";
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+await page.goto(url, { waitUntil: "networkidle" });
+await page.waitForSelector(".node", { timeout: 60_000 });
+const cards = await page.locator(".node").count();
+await page.locator(".node").first().click();
+await page.waitForSelector("#panel");
+await page.getByRole("button", { name: /^SUB / }).click();
+await page.waitForSelector(".wirepick-list");
+const rows = await page.locator(".wirepick-row").count();
+const pickable = await page.locator(".wirepick-row:not(.off)").count();
+console.log(`cards on map: ${cards}`);
+console.log(`picker rows: ${rows} (expect ${cards - 1})`);
+console.log(`pickable: ${pickable}`);
+await page.locator("#panel").screenshot({ path: "wire-picker.png" });
+await browser.close();
+if (rows !== cards - 1) process.exit(1);

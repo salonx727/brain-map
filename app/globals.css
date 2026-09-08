@@ -800,8 +800,43 @@ select.f option {
   line-height: 1;
   padding: 0;
 }
-.chip button:hover {
+.wirepick {
+  margin-bottom: 8px;
+}
+.wirepick-list {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 8px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-chip);
+  background: var(--graphite);
+}
+.wirepick-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--stroke);
   color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.wirepick-row:last-child {
+  border-bottom: none;
+}
+.wirepick-row:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--baton);
+}
+.wirepick-row.off {
+  color: var(--text-3);
+  cursor: default;
 }
 
 button.act {

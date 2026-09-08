@@ -19,9 +19,11 @@ import {
   deleteFileAction,
   deleteNodeLinkAction,
   renamePmNodeAction,
+  updateNodeLinkAction,
 } from "@/app/actions/pm";
 import type { BrainNode, Link } from "@/lib/types";
 import ListEditor from "./ListEditor";
+import WirePicker, { optionsFromModel } from "./WirePicker";
 
 export default function ControlPanel({
   d,
@@ -50,7 +52,7 @@ export default function ControlPanel({
    */
   const editable = canEditNode(d.id);
 
-  const [wireTo, setWireTo] = useState("");
+  const [retargetId, setRetargetId] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const [addArmed, setAddArmed] = useState(false);
   const [delArmed, setDelArmed] = useState(false);
@@ -69,26 +71,55 @@ export default function ControlPanel({
   const removable = isEmpty(d.id);
 
   /**
-   * Every other card on the map, not a filtered subset.
-   *
-   * Hiding engines from a canonical card made this look empty — after the placeholder
-   * purge the only remaining PM card was "NEW SUB-NODE", so the dropdown read as broken.
-   * Already-wired and canon-to-canon rows stay in the list so the roster is complete;
-   * they are not pickable. A new PM wire still needs one PM endpoint (the DB trigger
-   * in 0002_pm_layer.sql) — two engines are joined by COYOTE or not at all.
+   * Every other card on the map, not a filtered subset. Built from nodes and order
+   * together so a card that has landed in the model but not yet in the draw order
+   * still appears — the native <select> also hid most of these behind a wheel that
+   * looked empty on a phone.
    */
-  const wireOptions = model.order
-    .filter((oid) => oid !== d.id && model.nodes[oid])
-    .map((oid) => {
-      const other = model.nodes[oid];
-      const label = (other.ref + "  " + (other.name || "")).trim();
-      const wired = hasLink(model.links, d.id, oid);
-      const bothCanon = !editable && !canEditNode(oid);
-      if (wired) return { id: oid, label, disabled: true, reason: "WIRED" };
-      if (bothCanon) return { id: oid, label, disabled: true, reason: "COYOTE" };
-      return { id: oid, label, disabled: false, reason: "" };
-    });
-  const wireTargets = wireOptions.filter((o) => !o.disabled);
+  const wireOptions = optionsFromModel(
+    model.nodes,
+    model.order,
+    d.id,
+    (oid) => hasLink(model.links, d.id, oid),
+  );
+
+  function applyWire(targetId: string) {
+    if (retargetId) {
+      const link = model.links.find((l) => l.id === retargetId);
+      if (!link || link.canon) return;
+      const movingA = otherEnd(link, d.id) === link.a;
+      const prior = movingA ? link.a : link.b;
+      if (movingA) link.a = targetId;
+      else link.b = targetId;
+      setRetargetId(null);
+      bump();
+      persist(
+        () =>
+          updateNodeLinkAction(
+            link.id as string,
+            movingA ? { fromNodeKey: targetId } : { toNodeKey: targetId },
+          ),
+        () => {
+          if (movingA) link.a = prior;
+          else link.b = prior;
+        },
+      );
+      return;
+    }
+    const link: Link = { a: d.id, b: targetId };
+    model.links.push(link);
+    bump();
+    persist(
+      async () => {
+        const created = await createNodeLinkAction({ fromNodeKey: link.a, toNodeKey: link.b });
+        link.id = created.id;
+        bump();
+      },
+      () => {
+        model.links = model.links.filter((q) => q !== link);
+      },
+    );
+  }
 
   let tally = "";
   if (tab === 1) {
@@ -328,90 +359,101 @@ export default function ControlPanel({
 
       {tab === 4 ? (
         <div className="sect">
-          <div className="row">
-            <select
-              className="f"
-              value={wireTo}
-              onChange={(e) => setWireTo(e.target.value)}
-            >
-              <option value="">Wire to…</option>
-              {wireOptions.map((o) => (
-                <option value={o.id} key={o.id} disabled={o.disabled}>
-                  {o.label + (o.reason ? "  ·  " + o.reason : "")}
-                </option>
-              ))}
-            </select>
-            <button
-              className="act"
-              onClick={() => {
-                if (!wireTo || !wireTargets.some((t) => t.id === wireTo)) return;
-                const link: Link = { a: d.id, b: wireTo };
-                model.links.push(link);
-                setWireTo("");
-                bump();
-                persist(
-                  async () => {
-                    const created = await createNodeLinkAction({ fromNodeKey: link.a, toNodeKey: link.b });
-                    link.id = created.id;
-                    bump();
-                  },
-                  () => {
-                    model.links = model.links.filter((q) => q !== link);
-                  },
-                );
-              }}
-            >
-              WIRE
+          <div className="lab">{retargetId ? "MOVE THIS WIRE TO…" : "WIRE TO ANY CARD"}</div>
+          <WirePicker
+            options={
+              retargetId
+                ? optionsFromModel(
+                    model.nodes,
+                    model.order,
+                    d.id,
+                    (oid) => {
+                      const editing = model.links.find((l) => l.id === retargetId);
+                      if (editing && otherEnd(editing, d.id) === oid) return false;
+                      return hasLink(model.links, d.id, oid);
+                    },
+                  )
+                : wireOptions
+            }
+            onPick={applyWire}
+            placeholder={retargetId ? "Pick the new other end…" : "Search every card on the map…"}
+          />
+          {retargetId ? (
+            <button className="act" style={{ width: "100%", marginTop: 8 }} onClick={() => setRetargetId(null)}>
+              CANCEL MOVE
             </button>
-          </div>
-
-          {!editable ? (
-            <div className="cap" style={{ marginTop: -8, marginBottom: 12 }}>
-              EVERY CARD IS LISTED · WIRED AND COYOTE PAIRS ARE VISIBLE, NOT PICKABLE
-            </div>
           ) : null}
+
+          <div className="cap" style={{ marginBottom: 12 }}>
+            {wireOptions.length} CARDS · WIRED AND COYOTE PAIRS STAY VISIBLE, NOT PICKABLE
+          </div>
 
           {!mine.length ? (
             <div className="none">Not wired to anything.</div>
           ) : (
             mine.map((l, i) => {
               const other = model.nodes[otherEnd(l, d.id)];
+              if (!other) return null;
               return (
-                <div className="item" key={i}>
-                  <span>
-                    {other.ref + "  " + (other.name || "")}
-                    {l.why ? (
-                      <>
-                        <br />
-                        <span style={{ color: "var(--text-3)", fontSize: 10 }}>{l.why}</span>
-                      </>
-                    ) : null}
-                  </span>
-                  {/* A COYOTE-declared edge has no id and is not this app's to remove —
-                      it would reappear on the next publish anyway. */}
+                <div className="item" key={l.id ?? i} style={{ display: "block" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <span>{other.ref + "  " + (other.name || "")}</span>
+                    {l.canon ? (
+                      <span className="cap" title="Declared by COYOTE">
+                        CANON
+                      </span>
+                    ) : (
+                      <span style={{ display: "flex", gap: 6 }}>
+                        <button className="act" style={{ padding: "6px 10px", fontSize: 9 }} onClick={() => setRetargetId(l.id ?? null)}>
+                          MOVE
+                        </button>
+                        <button
+                          className="minus"
+                          aria-label="Remove"
+                          onClick={() => {
+                            const prior = model.links.slice();
+                            model.links = model.links.filter((q) => q !== l);
+                            bump();
+                            if (!l.id) return;
+                            persist(
+                              () => deleteNodeLinkAction(l.id as string),
+                              () => {
+                                model.links = prior;
+                              },
+                            );
+                          }}
+                        >
+                          <span />
+                        </button>
+                      </span>
+                    )}
+                  </div>
                   {l.canon ? (
-                    <span className="cap" title="Declared by COYOTE">
-                      CANON
-                    </span>
+                    l.why ? (
+                      <div className="cap" style={{ marginTop: 6 }}>
+                        {l.why}
+                      </div>
+                    ) : null
                   ) : (
-                    <button
-                      className="minus"
-                      aria-label="Remove"
-                      onClick={() => {
-                        const prior = model.links.slice();
-                        model.links = model.links.filter((q) => q !== l);
+                    <input
+                      className="f"
+                      style={{ marginTop: 8 }}
+                      defaultValue={l.why ?? ""}
+                      placeholder="Why this wire — optional"
+                      onBlur={(e) => {
+                        const next = e.target.value.trim();
+                        const was = l.why ?? "";
+                        if (next === was || !l.id) return;
+                        l.why = next || undefined;
                         bump();
-                        if (!l.id) return;
                         persist(
-                          () => deleteNodeLinkAction(l.id as string),
+                          () => updateNodeLinkAction(l.id as string, { citation: next || null }),
                           () => {
-                            model.links = prior;
+                            l.why = was || undefined;
                           },
                         );
                       }}
-                    >
-                      <span />
-                    </button>
+                    />
                   )}
                 </div>
               );

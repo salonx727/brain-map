@@ -80,6 +80,16 @@ export async function deleteNodeLinkAction(id: string) {
   revalidatePath("/");
 }
 
+export async function updateNodeLinkAction(
+  id: string,
+  patch: { fromNodeKey?: string; toNodeKey?: string; citation?: string | null },
+) {
+  const client = createPmServiceClient();
+  const link = await pmWriter.updateNodeLink(client, id, patch);
+  revalidatePath("/");
+  return link;
+}
+
 export async function upsertLayoutPositionAction(input: { layoutId: string; nodeKey: string; x: number; y: number; color?: string | null; updatedBy?: string | null }) {
   const client = createPmServiceClient();
   const position = await pmWriter.upsertLayoutPosition(client, input);

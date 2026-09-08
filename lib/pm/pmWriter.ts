@@ -409,6 +409,26 @@ export async function deleteNodeLink(client: SupabaseClient, id: string): Promis
 }
 
 /**
+ * Retargets a PM wire or edits its citation. Same trigger as insert: both ends still
+ * cannot be canonical. The row keeps its id so the UI can keep holding it rather than
+ * deleting and inserting, which would flash the wire away and make an in-place edit
+ * look like a new one.
+ */
+export async function updateNodeLink(
+  client: SupabaseClient,
+  id: string,
+  patch: { fromNodeKey?: string; toNodeKey?: string; citation?: string | null },
+): Promise<PmNodeLink> {
+  const body: Record<string, unknown> = {};
+  if (patch.fromNodeKey !== undefined) body.from_node_key = patch.fromNodeKey;
+  if (patch.toNodeKey !== undefined) body.to_node_key = patch.toNodeKey;
+  if (patch.citation !== undefined) body.citation = patch.citation;
+  const { data, error } = await client.from("pm_node_links").update(body).eq("id", id).select().single();
+  const row = unwrap({ data, error }, "updateNodeLink");
+  return { id: row.id, fromNodeKey: row.from_node_key, toNodeKey: row.to_node_key, citation: row.citation, createdBy: row.created_by, createdAt: row.created_at };
+}
+
+/**
  * Work-state is a fact about the node, true regardless of which named layout is being
  * viewed — see 0006_pm_node_state.sql's header comment for why this is its own table
  * rather than a column on pm_layout_positions. Valid for a canonical node_key (an engine)
