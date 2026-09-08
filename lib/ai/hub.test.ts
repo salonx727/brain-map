@@ -17,7 +17,19 @@ describe("buildAiContext", () => {
     const ctx = await buildAiContext(["engine:E01"]);
     expect(ctx.nodeCount, `no nodes came back — sourceError: ${ctx.sourceError ?? "none"}`).toBe(1);
     expect(ctx.summary).toContain("engine:E01");
-    expect(ctx.summary).not.toContain("engine:E02");
+    // E02 is named — E01 wires to it, and a wire whose far end is withheld says nothing.
+    // What scoping owes is that E02 contributes no card of its own, so the assertion is
+    // against the card header rather than against the string appearing at all.
+    expect(ctx.summary).not.toMatch(/^engine:E02 —/m);
+  });
+
+  it("carries what the cards actually show, not a second reading of the same tables", async () => {
+    const ctx = await buildAiContext();
+    // Each of these was invisible while this built its own summary from getPmLayer: an
+    // engine's §15 blockers, the owner cards, and the wires between engines.
+    expect(ctx.summary).toMatch(/\[BLOCKER CANON\]/);
+    expect(ctx.summary).toMatch(/^owner:shawn —/m);
+    expect(ctx.summary).toMatch(/\[WIRE CANON\]/);
   });
 });
 

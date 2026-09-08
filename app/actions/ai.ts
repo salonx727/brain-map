@@ -20,7 +20,8 @@ import { createPmServiceClient } from "@/lib/pm/serviceClient";
 import * as pmWriter from "@/lib/pm/pmWriter";
 import { askAiHub } from "@/lib/ai/hub";
 import { getCanonicalGraph } from "@/lib/graph/getCanonicalGraph";
-import { getPmLayer } from "@/lib/graph/getPmLayer";
+import { getWholeBoardPmLayer } from "@/lib/graph/getPmLayer";
+import { OWNER_KEYS } from "@/lib/owners";
 import type { AiHubRequest, AiHubResponse, AiProposal } from "@/lib/ai/types";
 
 export async function askAiHubAction(request: AiHubRequest): Promise<AiHubResponse> {
@@ -33,8 +34,13 @@ export async function askAiHubAction(request: AiHubRequest): Promise<AiHubRespon
  * Server Action argument. */
 async function currentGraphIdentity(): Promise<{ nodeKeys: Set<string>; fileIds: Set<string> }> {
   const canonical = await getCanonicalGraph();
-  const pm = await getPmLayer(canonical.nodes.map((n) => n.nodeKey));
-  const nodeKeys = new Set<string>([...canonical.nodes.map((n) => n.nodeKey), ...pm.nodes.map((n) => n.nodeKey)]);
+  // Read the whole board, and name the owner cards explicitly — the same set the map and
+  // buildAiContext use. Scoped to canonical keys, this rejected a proposal aimed at
+  // CODEMAN, SHAWN, or any PM card with no canonical parent, all of which the AI can see
+  // and a person can already act on by hand. A validator narrower than the surface it
+  // guards refuses legitimate work and calls it a missing node.
+  const pm = await getWholeBoardPmLayer([...canonical.nodes.map((n) => n.nodeKey), ...OWNER_KEYS]);
+  const nodeKeys = new Set<string>([...canonical.nodes.map((n) => n.nodeKey), ...pm.nodes.map((n) => n.nodeKey), ...OWNER_KEYS]);
   return { nodeKeys, fileIds: new Set(pm.files.map((f) => f.id)) };
 }
 

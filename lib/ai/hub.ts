@@ -10,9 +10,12 @@
 // Nothing in this module can call that, and it is not imported here.
 
 import { getCanonicalGraph } from "@/lib/graph/getCanonicalGraph";
-import { getPmLayer } from "@/lib/graph/getPmLayer";
+import { getWholeBoardPmLayer } from "@/lib/graph/getPmLayer";
+import { buildModel } from "@/lib/adapter";
+import { OWNER_KEYS } from "@/lib/owners";
 import { callClaude, parseProviderReply } from "@/lib/ai/provider";
 import type { AiHubRequest, AiHubResponse, AiRoutingSuggestion } from "@/lib/ai/types";
+import type { BrainNode, Model } from "@/lib/types";
 
 /** The minimum a file reference needs to be named in a prompt — never its bytes. */
 export interface AiContextFile {
@@ -42,40 +45,68 @@ export interface AiContext {
   sourceError?: string;
 }
 
+/** One card, rendered the way the card itself reads. */
+function renderNode(node: BrainNode, model: Model): string {
+  const lines = [`${node.id} — ${node.name || node.ref} [${node.ref}${node.sec ? ` ${node.sec}` : ""}] · ${node.state}`];
+
+  // `canon` is marked on every item that carries it because the difference decides what
+  // the model is allowed to propose about it: a §15 blocker is COYOTE's and cannot be
+  // edited from here, while a hand-typed one is ordinary project-management work.
+  for (const b of node.blockers) {
+    lines.push(`  [BLOCKER${b.done ? " DONE" : ""}${b.canon ? " CANON" : ""}] ${b.text}${b.sec ? ` (${b.sec})` : ""}`);
+  }
+  for (const t of node.todos) {
+    lines.push(`  [TODO${t.done ? " DONE" : ""}${t.canon ? " CANON" : ""}] ${t.text}${t.sec ? ` (${t.sec})` : ""}`);
+  }
+  // Files are named, never read. The id is included because `propose_route_file` has to
+  // cite a real one — a model that could only see filenames would have to invent an id.
+  for (const drop of node.drops) {
+    if (drop.id) lines.push(`  [FILE ${drop.id}] ${drop.name}`);
+  }
+  for (const shot of node.screens) {
+    if (shot?.id) lines.push(`  [UI SLOT ${shot.id}] ${shot.name}`);
+  }
+  for (const link of model.links) {
+    if (link.a !== node.id) continue;
+    lines.push(`  [WIRE${link.canon ? " CANON" : ""}] ${link.a} -> ${link.b}${link.why ? ` (${link.why})` : ""}`);
+  }
+  return lines.join("\n");
+}
+
 /**
  * Builds the exact same read-only context regardless of provider — assembled once here
  * so `askAiHub` (and any future provider-specific implementation) can't accidentally
  * diverge on what "the graph" means between CLAUDE/GPT/OTHER.
+ *
+ * It is built from `buildModel`, the same function that produces what the map draws,
+ * rather than from a second walk over the same tables. That is the point: this used to
+ * assemble its own summary from getPmLayer, and had quietly fallen behind the surface it
+ * claims to describe — it could not see COYOTE's own blockers and open questions, the
+ * CODEMAN and SHAWN owner cards, or any PM card without a canonical parent. An AI
+ * answering confidently about a map that is not the one on screen is the same lie as an
+ * AI answering about a map it never received, which this file already refuses to do.
  */
 export async function buildAiContext(scopeNodeKeys?: string[]): Promise<AiContext> {
   const canonical = await getCanonicalGraph();
-  const relevantNodes = scopeNodeKeys ? canonical.nodes.filter((n) => scopeNodeKeys.includes(n.nodeKey)) : canonical.nodes;
-  const pm = await getPmLayer(relevantNodes.map((n) => n.nodeKey));
+  const pm = await getWholeBoardPmLayer([...canonical.nodes.map((n) => n.nodeKey), ...OWNER_KEYS]);
+  // No positions: where a card sits is a layout concern and says nothing about the work.
+  const model = buildModel(canonical.nodes, canonical.connections, pm, new Map(), canonical.diagnostics);
 
-  const lines: string[] = [];
-  for (const node of relevantNodes) {
-    lines.push(`${node.nodeKey} — ${node.label}`);
-  }
-  for (const item of pm.items) {
-    lines.push(`  [${item.kind.toUpperCase()}${item.status === "done" ? " DONE" : ""}] ${item.title}${item.nodeKey ? ` (${item.nodeKey})` : ""}`);
-  }
-  for (const state of pm.states) {
-    lines.push(`  [STATE] ${state.nodeKey}: ${state.state}`);
-  }
-  for (const link of pm.links) {
-    lines.push(`  [WIRE] ${link.fromNodeKey} -> ${link.toNodeKey}${link.citation ? ` (${link.citation})` : ""}`);
-  }
-  // Files are named, never read. The id is included because `propose_route_file` has to
-  // cite a real one — a model that can only see filenames would have to invent an id.
-  for (const file of pm.files) {
-    lines.push(`  [FILE ${file.id}] ${file.fileName} — ${file.nodeKey ? file.nodeKey : "UNROUTED"}`);
+  const scoped = scopeNodeKeys ? model.order.filter((id) => scopeNodeKeys.includes(id)) : model.order;
+
+  const lines = scoped.map((id) => renderNode(model.nodes[id], model));
+
+  if (!scopeNodeKeys && model.unrouted.length) {
+    lines.push(
+      ["UNROUTED — files with no card yet", ...model.unrouted.map((f) => (f.id ? `  [FILE ${f.id}] ${f.name}` : `  [FILE] ${f.name}`))].join("\n"),
+    );
   }
 
   const files: AiContextFile[] = pm.files.map((f) => ({ id: f.id, name: f.fileName, nodeKey: f.nodeKey }));
 
   return {
-    summary: lines.join("\n"),
-    nodeCount: relevantNodes.length,
+    summary: lines.join("\n\n"),
+    nodeCount: scoped.length,
     files,
     ...(canonical.sourceError ? { sourceError: canonical.sourceError } : {}),
   };

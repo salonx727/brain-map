@@ -593,7 +593,8 @@ body.wire3d #declare {
 }
 
 input.f,
-select.f {
+select.f,
+textarea.f {
   width: 100%;
   background: var(--graphite);
   border: 1px solid var(--stroke);
@@ -605,11 +606,18 @@ select.f {
   outline: none;
   transition: border-color 140ms var(--ease);
 }
-input.f:focus {
+input.f:focus,
+textarea.f:focus {
   border-color: var(--baton);
 }
-input.f::placeholder {
+input.f::placeholder,
+textarea.f::placeholder {
   color: var(--text-3);
+}
+/* The AI hub's question box is the only multi-line field on the surface. Without this it
+   inherits the browser's own white textarea and is the one bright rectangle on a dark map. */
+textarea.f {
+  line-height: 1.55;
 }
 select.f option {
   background: #101010;

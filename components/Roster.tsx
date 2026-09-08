@@ -6,6 +6,7 @@ import { uiStateToDb } from "@/lib/adapter";
 import { deleteFileAction, setNodeStateAction } from "@/app/actions/pm";
 import { STATES } from "@/lib/seed";
 import type { BrainNode } from "@/lib/types";
+import AiPanel from "./AiPanel";
 
 export type RosterMode =
   | { kind: "state"; id: string }
@@ -161,24 +162,7 @@ export default function Roster({
                 </div>
               </>
             ) : (
-              <>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {["CLAUDE", "GPT", "OTHER"].map((pv) => (
-                    <button
-                      key={pv}
-                      className={"act" + (provider === pv ? " armed" : "")}
-                      style={{ padding: "13px 15px", fontSize: 10 }}
-                      onClick={() => setProvider(provider === pv ? null : pv)}
-                    >
-                      {pv}
-                    </button>
-                  ))}
-                </div>
-                <div className="foot" style={{ marginTop: 18 }}>
-                  READ ONLY · THE AI READS THE MAP AND ANSWERS AGAINST IT · IT DOES NOT
-                  WRITE · BRING YOUR OWN KEY · NO KEY IS STORED HERE
-                </div>
-              </>
+              <AiPanel provider={provider} setProvider={setProvider} />
             )}
           </>
         )}
