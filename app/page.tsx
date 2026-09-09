@@ -3,6 +3,7 @@ import { getLayout, getWholeBoardPmLayer } from "@/lib/graph/getPmLayer";
 import { buildModel } from "@/lib/adapter";
 import { signModelFiles } from "@/lib/pm/signModelFiles";
 import { OWNER_KEYS } from "@/lib/owners";
+import { findReconcileCandidates } from "@/lib/pm/rulingReader";
 import BrainSurface from "@/components/BrainSurface";
 
 // Without this, Next.js prerenders this page at build time and a newly published
@@ -33,8 +34,13 @@ export default async function Page() {
 
   const model = await signModelFiles(buildModel(nodes, connections, pm, positions, diagnostics));
 
+  // Which canonical arrivals look like a card someone drew. Computed here, at read time,
+  // rather than inside the sync job — sync-coyote.ts stays single-purpose, and a reconcile
+  // nobody got to today is still waiting tomorrow instead of having scrolled past.
+  const reconcile = findReconcileCandidates(model.rulings, nodes);
+
   // layoutId travels with the model because a dragged card writes its position back, and
   // a position belongs to a layout. Null when Supabase isn't configured — the surface
   // then says positions aren't being saved rather than silently dropping them.
-  return <BrainSurface initialModel={model} layoutId={layout?.layout.id ?? null} />;
+  return <BrainSurface initialModel={model} layoutId={layout?.layout.id ?? null} reconcile={reconcile} />;
 }

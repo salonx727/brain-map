@@ -49,6 +49,13 @@ export interface AiContext {
 function renderNode(node: BrainNode, model: Model): string {
   const lines = [`${node.id} — ${node.name || node.ref} [${node.ref}${node.sec ? ` ${node.sec}` : ""}] · ${node.state}`];
 
+  // An open ruling is stated because it changes what the model may claim about the card:
+  // it exists on the map and does NOT exist in canon, so nothing here should be described
+  // as settled, and no answer should cite it as though COYOTE said it.
+  if (node.awaitingRuling) {
+    lines.push(`  [AWAITING RULING${node.rulingRef ? ` ${node.rulingRef}` : ""}] proposed on the map, not in COYOTE — Shawn has not ruled`);
+  }
+
   // `canon` is marked on every item that carries it because the difference decides what
   // the model is allowed to propose about it: a §15 blocker is COYOTE's and cannot be
   // edited from here, while a hand-typed one is ordinary project-management work.

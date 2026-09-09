@@ -11,7 +11,8 @@
 // canonical_* table — only publisher.ts does that, and this file doesn't import it.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PmFile, PmItem, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
+import type { ConnectionIntent, PmFile, PmItem, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
+import { createRuling } from "@/lib/pm/rulingWriter";
 
 const BUCKET = "pm-files";
 
@@ -80,8 +81,18 @@ async function nextDisplayRef(client: SupabaseClient, kind: "subnode" | "functio
   return `${prefix}-${highest + 1}`;
 }
 
-/** A custom sub-node/function. parentNodeKey may be a canonical_nodes.node_key or another pm_nodes.node_key — never validated against canonical_nodes here (that would create a cross-table FK-shaped coupling this architecture deliberately avoids); an orphaned parent just means the UI has nothing to nest under, not a data-integrity failure. */
-export async function createPmNode(client: SupabaseClient, input: { label: string; parentNodeKey?: string | null; kind?: "subnode" | "function"; createdBy?: string | null }): Promise<PmNode> {
+/**
+ * A custom sub-node/function. parentNodeKey may be a canonical_nodes.node_key or another
+ * pm_nodes.node_key — never validated against canonical_nodes here (that would create a
+ * cross-table FK-shaped coupling this architecture deliberately avoids); an orphaned
+ * parent just means the UI has nothing to nest under, not a data-integrity failure.
+ *
+ * Every node created here also opens a ruling. Shawn's instruction, 2026-09-09: a card
+ * drawn on the map reaches canon only through his queue, and every one of them lands
+ * there without anyone having to remember to send it. The ruling is not a promotion — it
+ * is a request for one, and he rules from it in his own words.
+ */
+export async function createPmNode(client: SupabaseClient, input: { label: string; parentNodeKey?: string | null; kind?: "subnode" | "function"; createdBy?: string | null; intent?: Partial<ConnectionIntent> }): Promise<PmNode> {
   const kind = input.kind ?? "subnode";
   const displayRef = await nextDisplayRef(client, kind);
   const { data, error } = await client
@@ -90,7 +101,17 @@ export async function createPmNode(client: SupabaseClient, input: { label: strin
     .select()
     .single();
   const row = unwrap({ data, error }, "createPmNode");
-  return pmNodeFromRow(row);
+  const node = pmNodeFromRow(row);
+
+  await createRuling(client, {
+    nodeKey: node.nodeKey,
+    label: node.label,
+    parentNodeKey: node.parentNodeKey,
+    intent: input.intent,
+    submittedBy: input.createdBy ?? null,
+  });
+
+  return node;
 }
 
 /** Renames a PM-created node's label only — never touches node_key (permanent identity) or display_ref (assigned once at creation) — and has no equivalent for canonical nodes, which have no write path in this module at all. This is what makes "editable node name" safe: it only exists for rows this table itself created. */
@@ -502,6 +523,13 @@ export async function deletePmNode(client: SupabaseClient, nodeKey: string): Pro
   if (linksFromError) throw new Error(`deletePmNode: clearing outgoing links failed: ${linksFromError.message}`);
   const { error: linksToError } = await client.from("pm_node_links").delete().eq("to_node_key", nodeKey);
   if (linksToError) throw new Error(`deletePmNode: clearing incoming links failed: ${linksToError.message}`);
+
+  // Withdraw the open ruling with the card. Leaving it would show Shawn a queue entry for
+  // something that no longer exists on the map — and he rules one at a time, so a ghost
+  // costs him a real turn. Resolved rulings (ruled/rejected) are history and stay: their
+  // label is snapshotted, so they still read correctly with no node behind them.
+  const { error: rulingError } = await client.from("pm_rulings").delete().eq("node_key", nodeKey).eq("status", "pending");
+  if (rulingError) throw new Error(`deletePmNode: clearing pm_rulings failed: ${rulingError.message}`);
 
   const { error: deleteError } = await client.from("pm_nodes").delete().eq("node_key", nodeKey);
   if (deleteError) throw new Error(`deletePmNode: ${deleteError.message}`);

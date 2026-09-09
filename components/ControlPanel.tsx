@@ -21,9 +21,23 @@ import {
   renamePmNodeAction,
   updateNodeLinkAction,
 } from "@/app/actions/pm";
+import { updateRulingIntentAction } from "@/app/actions/rulings";
 import type { BrainNode, Link } from "@/lib/types";
+import type { ConnectionIntent } from "@/lib/types/pm";
 import ListEditor from "./ListEditor";
+import RulingList from "./RulingList";
 import WirePicker, { optionsFromModel } from "./WirePicker";
+
+/** One past TAGS, and only ever rendered on Shawn's card — see the strip below. */
+const RULING_TAB = TAGS.length;
+
+/** The four fields §35 declares a connection with. connections.ts reads exactly these, so a ruling written in this vocabulary parses back correctly once Shawn puts it in COYOTE. */
+const INTENT_FIELDS = [
+  { key: "downstream", label: "DOWNSTREAM", hint: "Which engine reads what this writes" },
+  { key: "reads", label: "READS", hint: "Which engine's data this reads" },
+  { key: "emits", label: "EMITS", hint: "What this emits at session close" },
+  { key: "trigger", label: "TRIGGER", hint: "What intake object starts this" },
+] as const;
 
 export default function ControlPanel({
   d,
@@ -51,6 +65,14 @@ export default function ControlPanel({
    * node, they are not the node.
    */
   const editable = canEditNode(d.id);
+  const isShawn = d.id === "owner:shawn";
+  const ruling = model.rulings.find((r) => r.nodeKey === d.id) ?? null;
+
+  // Held locally because updateRulingIntent writes all four fields at once — sending only
+  // the one that changed would blank the other three.
+  const [intent, setIntent] = useState<ConnectionIntent>(
+    ruling?.intent ?? { downstream: null, reads: null, emits: null, trigger: null },
+  );
 
   const [retargetId, setRetargetId] = useState<string | null>(null);
   const [over, setOver] = useState(false);
@@ -195,6 +217,39 @@ export default function ControlPanel({
         </div>
       ) : null}
 
+      {/* What this card is proposing, in the vocabulary Shawn writes canon in. Shown only
+          while its ruling is open: once he has ruled, the intent is the record of what he
+          ruled on and editing it would misrepresent that. */}
+      {ruling ? (
+        <div className="sect" style={{ marginBottom: 18 }}>
+          <div className="lab">{ruling.rulingRef} · AWAITING SHAWN&rsquo;S RULING</div>
+          {INTENT_FIELDS.map((f) => (
+            <label key={f.key} style={{ display: "block", marginTop: 8 }}>
+              <span className="lab">{f.label}</span>
+              <input
+                className="f"
+                defaultValue={intent[f.key] ?? ""}
+                placeholder={f.hint}
+                onBlur={(e) => {
+                  const next = e.target.value.trim() || null;
+                  if (next === (intent[f.key] ?? null)) return;
+                  const prior = { ...intent };
+                  const updated = { ...intent, [f.key]: next };
+                  setIntent(updated);
+                  persist(
+                    () => updateRulingIntentAction(d.id, updated),
+                    () => setIntent(prior),
+                  );
+                }}
+              />
+            </label>
+          ))}
+          <div className="cap" style={{ marginTop: 10 }}>
+            THIS CARD IS ON THE MAP, NOT IN CANON · IT REACHES CANON ONLY WHEN SHAWN RULES
+          </div>
+        </div>
+      ) : null}
+
       <div className="strip">
         {TAGS.map((t, i) => (
           <button
@@ -205,7 +260,17 @@ export default function ControlPanel({
             {t.label + " " + c[i]}
           </button>
         ))}
+        {/* Only on Shawn's card. The queue is his — nothing reaches canon except by his
+            ruling — so it is a category on the card that already carries §00a's open
+            questions, not a sixth tab everywhere. */}
+        {isShawn ? (
+          <button className={tab === RULING_TAB ? "on" : ""} onClick={() => setTab(tab === RULING_TAB ? null : RULING_TAB)}>
+            {"RULING " + model.rulings.length}
+          </button>
+        ) : null}
       </div>
+
+      {isShawn && tab === RULING_TAB ? <RulingList onOpenCard={(id) => onOpenCard(id, null)} /> : null}
 
       {/* UI slots — a fixed array of 4 where slot_index matters, images only */}
       {tab === 0 ? (

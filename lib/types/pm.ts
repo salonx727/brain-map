@@ -141,6 +141,46 @@ export interface PmNodeState {
   updatedAt: string;
 }
 
+export type RulingStatus = "pending" | "ruled" | "rejected";
+
+/**
+ * What a card is proposing about its own connections, in COYOTE's own §35 vocabulary —
+ * the same four fields connections.ts already reads, so a ruling is phrased in the
+ * language Shawn writes canon in. Free text throughout: this is a proposal a human typed,
+ * not a resolved edge, and nothing here is validated against the node registry.
+ */
+export interface ConnectionIntent {
+  downstream: string | null;
+  reads: string | null;
+  emits: string | null;
+  trigger: string | null;
+}
+
+/**
+ * One ruling awaiting Shawn. Created automatically for every map-drawn node — his ruling
+ * 2026-09-09: all of them reach his card, he takes them one at a time.
+ *
+ * `nodeKey` points at a `pm_nodes` row while pending, and deliberately keeps pointing at
+ * the now-deleted key afterwards: retirement removes the PM node but the ruling survives
+ * to record what became of it, which is why `label` is snapshotted here rather than read
+ * back through a join.
+ */
+export interface PmRuling {
+  id: string;
+  rulingRef: string;
+  nodeKey: string;
+  label: string;
+  parentNodeKey: string | null;
+  status: RulingStatus;
+  intent: ConnectionIntent;
+  submittedBy: string | null;
+  submittedAt: string;
+  resolvedAt: string | null;
+  resolvedNote: string | null;
+  /** The canonical key this card became. Set only by a confirmed retirement. */
+  ruledIntoNodeKey: string | null;
+}
+
 /** Everything the PM layer knows about a set of node keys, in one batch. Never flattened with canonical data — see getPmLayer.ts. */
 export interface PmLayer {
   nodes: PmNode[];
@@ -150,4 +190,5 @@ export interface PmLayer {
   files: PmFile[];
   links: PmNodeLink[];
   states: PmNodeState[];
+  rulings: PmRuling[];
 }

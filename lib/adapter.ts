@@ -178,6 +178,19 @@ export function buildModel(
     order.push(pmNode.nodeKey);
   }
 
+  // An open ruling marks the card it belongs to, and the whole queue goes to Shawn's card —
+  // his instruction, 2026-09-09: every map-drawn node reaches him, and he takes them one at
+  // a time. The marker is set here rather than stored because it is a fact about the ruling,
+  // not about the node: the moment the ruling resolves the card stops carrying it, with no
+  // second write to keep in step.
+  const pending = pm.rulings.filter((r) => r.status === "pending");
+  for (const ruling of pending) {
+    const target = nodes[ruling.nodeKey];
+    if (!target) continue;
+    target.awaitingRuling = true;
+    target.rulingRef = ruling.rulingRef;
+  }
+
   for (const s of pm.states) {
     const target = nodes[s.nodeKey];
     if (target) target.state = DB_TO_UI_STATE[s.state];
@@ -257,5 +270,5 @@ export function buildModel(
       data: null,
     }));
 
-  return { nodes, order, links, unrouted };
+  return { nodes, order, links, unrouted, rulings: pending };
 }

@@ -213,7 +213,7 @@ export function BrainProvider({
         // until it does. A temporary local id would have to be swapped for the real one
         // across nodes, order, links and whatever card is open — and any of those missed
         // is a card that silently stops saving.
-        const created = await createPmNodeAction({
+        const { node: created, ruling } = await createPmNodeAction({
           label: opts.name || "",
           parentNodeKey: opts.wireTo ?? null,
         });
@@ -229,6 +229,11 @@ export function BrainProvider({
           color: null,
           state: "UNTOUCHED",
           origin: "user",
+          // A new card is a proposal, and it says so from the first paint. Waiting for a
+          // reload to reveal that would let it read, briefly, as though canon had accepted
+          // something nobody has ruled on.
+          awaitingRuling: Boolean(ruling),
+          rulingRef: ruling?.rulingRef,
           subs: [],
           todos: [],
           blockers: [],
@@ -236,6 +241,7 @@ export function BrainProvider({
           drops: [],
         };
         m.order.push(created.nodeKey);
+        if (ruling) m.rulings = [...m.rulings, ruling];
 
         // parent_node_key is nesting, not a drawn wire. The 3D field and the SVG
         // paths both read model.links; without a pm_node_links row the new card
@@ -291,9 +297,14 @@ export function BrainProvider({
 
       const priorLinks = linksOf(m.links, id).slice();
       const priorIndex = m.order.indexOf(id);
+      const priorRulings = m.rulings;
 
       m.links = m.links.filter((l) => l.a !== id && l.b !== id);
       m.order = m.order.filter((o) => o !== id);
+      // The open ruling goes with the card — deletePmNode withdraws it server-side for the
+      // same reason: Shawn rules one at a time, so a queue entry for a card that no longer
+      // exists costs him a real turn.
+      m.rulings = m.rulings.filter((r) => r.nodeKey !== id);
       delete m.nodes[id];
       bump();
 
@@ -303,6 +314,7 @@ export function BrainProvider({
           m.nodes[id] = d;
           m.order.splice(Math.min(priorIndex, m.order.length), 0, id);
           priorLinks.forEach((l) => m.links.push(l));
+          m.rulings = priorRulings;
         },
       );
 

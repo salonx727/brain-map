@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getAllPmNodeKeys, getDefaultLayout, getPmLayerForNodeKeys } from "@/lib/pm/pmReader";
 import type { PmLayer, PmLayout, PmLayoutPosition } from "@/lib/types/pm";
 
-const EMPTY_LAYER: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [] };
+const EMPTY_LAYER: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [] };
 
 function readOnlyClient() {
   const supabaseUrl = process.env.SUPABASE_URL;

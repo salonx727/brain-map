@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PmFile, PmItem, PmLayer, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
+import { rulingRow } from "@/lib/pm/rulingReader";
 
 function personRow(r: { id: string; name: string; created_at: string }): PmPerson {
   return { id: r.id, name: r.name, createdAt: r.created_at };
@@ -144,7 +145,7 @@ export async function getAllPmNodeKeys(client: SupabaseClient): Promise<string[]
 
 export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: string[]): Promise<PmLayer> {
   if (nodeKeys.length === 0) {
-    return { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [] };
+    return { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [] };
   }
 
   const [nodesA, nodesB, items, notes, references, files, linksA, linksB] = await Promise.all([
@@ -183,12 +184,19 @@ export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: st
   // including a standalone link endpoint) — every node this layer can possibly render is
   // in here, so no node's real work-state is ever silently missed.
   const allKeys = [...new Set([...nodeKeys, ...nodeByKey.keys()])];
-  const { data: stateRows, error: stateError } = await client.from("pm_node_state").select("*").in("node_key", allKeys);
+  const [{ data: stateRows, error: stateError }, { data: rulingRows, error: rulingError }] = await Promise.all([
+    client.from("pm_node_state").select("*").in("node_key", allKeys),
+    // Every ruling touching this key set, not just the pending ones — a card whose ruling
+    // was rejected still needs to read as rejected rather than as never submitted.
+    client.from("pm_rulings").select("*").in("node_key", allKeys),
+  ]);
   if (stateError) throw new Error(`getPmLayerForNodeKeys: ${stateError.message}`);
+  if (rulingError) throw new Error(`getPmLayerForNodeKeys: ${rulingError.message}`);
 
   return {
     nodes: [...nodeByKey.values()],
     states: (stateRows ?? []).map(nodeStateRow),
+    rulings: (rulingRows ?? []).map(rulingRow),
     items: (items.data ?? []).map(itemRow),
     notes: (notes.data ?? []).map(noteRow),
     references: (references.data ?? []).map(referenceRow),

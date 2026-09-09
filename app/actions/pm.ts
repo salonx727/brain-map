@@ -10,7 +10,8 @@
 import { revalidatePath } from "next/cache";
 import { createPmServiceClient } from "@/lib/pm/serviceClient";
 import * as pmWriter from "@/lib/pm/pmWriter";
-import type { PmItem, PmNodeState, PmReference } from "@/lib/types/pm";
+import { getRulingsForNodeKeys } from "@/lib/pm/rulingReader";
+import type { ConnectionIntent, PmItem, PmNodeState, PmReference } from "@/lib/types/pm";
 
 export async function createItemAction(input: { kind: "todo" | "blocker"; title: string; nodeKey?: string | null; detail?: string; ownerId?: string | null; createdBy?: string | null }) {
   const client = createPmServiceClient();
@@ -53,11 +54,19 @@ export async function addReferenceAction(input: { nodeKey: string; url: string; 
   return ref;
 }
 
-export async function createPmNodeAction(input: { label: string; parentNodeKey?: string | null; kind?: "subnode" | "function"; createdBy?: string | null }) {
+/**
+ * Returns the ruling alongside the node because creating one always opens the other, and
+ * the surface has to show both immediately — a card that appears without its AWAITING
+ * RULING marker reads as already accepted into canon, which is the one thing it is not.
+ * Read back rather than threaded through pmWriter so that module keeps returning a PmNode
+ * and nothing else.
+ */
+export async function createPmNodeAction(input: { label: string; parentNodeKey?: string | null; kind?: "subnode" | "function"; createdBy?: string | null; intent?: Partial<ConnectionIntent> }) {
   const client = createPmServiceClient();
   const node = await pmWriter.createPmNode(client, input);
+  const [ruling] = await getRulingsForNodeKeys(client, [node.nodeKey]);
   revalidatePath("/");
-  return node;
+  return { node, ruling: ruling ?? null };
 }
 
 export async function renamePmNodeAction(nodeKey: string, label: string, updatedBy?: string | null) {

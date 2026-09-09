@@ -7,17 +7,22 @@ import { upsertLayoutPositionAction } from "@/app/actions/pm";
 import { SIZE } from "@/lib/seed";
 import { collides, linksOf, otherEnd } from "@/lib/graph";
 import type { Model } from "@/lib/types";
+import type { ReconcileCandidate } from "@/lib/pm/rulingReader";
 import ControlPanel from "./ControlPanel";
 import Field3D from "./Field3D";
 import NodeCard from "./NodeCard";
+import ReconcileTray from "./ReconcileTray";
 import Roster, { type RosterMode } from "./Roster";
 
 export default function BrainSurface({
   initialModel,
   layoutId = null,
+  reconcile = [],
 }: {
   initialModel: Model;
   layoutId?: string | null;
+  /** Canonical arrivals that look like a pending ruling's card — suggestions only, resolved by a tap. */
+  reconcile?: ReconcileCandidate[];
 }) {
   /* The arrangement now arrives from the server already resolved (app/page.tsx ->
      lib/adapter.ts), so there is no stored layout to wait for. The mount gate stays
@@ -28,12 +33,12 @@ export default function BrainSurface({
 
   return (
     <BrainProvider initialModel={initialModel} layoutId={layoutId}>
-      <Surface />
+      <Surface reconcile={reconcile} />
     </BrainProvider>
   );
 }
 
-function Surface() {
+function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
   const brain = useBrain();
   const { model, bump, persist, storeNote, savedFlash, layoutId, addFiles } = brain;
 
@@ -502,6 +507,8 @@ function Surface() {
           ) : null}
         </span>
       </div>
+
+      <ReconcileTray candidates={reconcile} />
 
       <div id="wireout" className={wireOpen ? "open" : ""}>
         <span

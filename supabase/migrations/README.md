@@ -79,6 +79,32 @@ in the browser, read off disk by the agent), and `scripts/verify-brain-supabase.
 agent reading the live snapshot back out of Postgres). Probe rows removed afterwards with
 `scripts/purge-bridge-probes.ts`.
 
+`0009_ruling_layer.sql` (2026-09-09) — `pm_rulings`, the queue every map-drawn card lands
+in, plus `retire_pm_node_into_canonical()`. Shawn's ruling that day: a card created on the
+map never reaches canon on its own; it opens a ruling on his owner card, he rules it in the
+brain and writes COYOTE himself, and once the sync publishes the canonical node a human
+confirms the match and the PM row is folded into it. The function re-points
+items/notes/references/files/positions/state/children onto the canonical key, deletes links
+that would become canonical-to-canonical (0002's endpoint trigger is correct to refuse
+those — COYOTE declares them), then deletes the `pm_nodes` row. It reads `canonical_nodes`
+to validate the target and writes no canonical table. Matching is a suggested label match
+plus a confirming tap, never automatic: COYOTE carries no map-generated identifier because
+Shawn rules in his own language, and a wrong retirement would delete real work.
+
+**Applied and live** (2026-09-09, same project, `scripts/apply-migration.mjs`): 129/129 pass
+afterwards, including both live-Supabase files, and `scripts/verify-ruling-flow.mjs` confirms
+end to end against a running server that a drawn card opens a ruling, wears the marker, is
+offered the four §35 intent fields, appears in the queue on Shawn's card, offers no APPROVE
+button, and withdraws its ruling when the card is removed.
+
+**One thing the backfill exposed, worth keeping:** `purge-test-rows.ts` and
+`purge-placeholder-cards.ts` delete `pm_nodes` directly rather than through
+`pmWriter.deletePmNode`, so neither knew to withdraw a ruling. The first run after this
+migration put 25 rulings for long-deleted test cards straight into Shawn's queue — the one
+list in this app that a person works through by hand, so junk there costs real turns. Both
+scripts now clear `pm_rulings` too. Any future script that deletes a `pm_nodes` row must do
+the same.
+
 **The lesson worth keeping:** this file is the only record of what is actually applied,
 and it is hand-maintained. An entry missing here is indistinguishable from a migration
 that was never written. Add the "Applied and live" line in the same session you run the

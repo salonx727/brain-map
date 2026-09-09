@@ -63,6 +63,7 @@ export default function NodeCard({
     discovered ? "discovered" : "",
     unwired ? "unwired" : "",
     wirefocus ? "wirefocus" : "",
+    d.awaitingRuling ? "awaiting" : "",
     !blocked && !work ? "quiet" : "",
   ]
     .filter(Boolean)
@@ -111,7 +112,13 @@ export default function NodeCard({
         {d.ref + (d.sec && d.sec !== "—" && d.sec !== "held" ? "  " + d.sec : "")}
       </div>
       <div className="n-name">{d.name || "UNNAMED"}</div>
-      <div className="n-meta mono">{d.state || "UNTOUCHED"}</div>
+      {/* Two facts, side by side, because they are genuinely independent: how the build is
+          going, and whether canon has accepted the card at all. A card can be IN BUILD and
+          still be waiting on Shawn. */}
+      <div className="n-meta mono">
+        {d.state || "UNTOUCHED"}
+        {d.awaitingRuling ? <span className="ruling">{d.rulingRef ?? "RULING"}</span> : null}
+      </div>
       <div className="marks">
         {blocked ? <i className="solid" /> : null}
         {work ? <i /> : null}

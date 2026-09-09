@@ -88,6 +88,10 @@ async function main() {
       ["pm_files", "node_key"],
       ["pm_layout_positions", "node_key"],
       ["pm_node_state", "node_key"],
+      // Every pm_nodes row opens one of these, including the ones a test created. Left
+      // behind they are worse than junk cards on the map — they are entries in the one
+      // queue Shawn works through by hand, for cards that no longer exist.
+      ["pm_rulings", "node_key"],
     ] as const) {
       const { count, error } = await db.from(table).select("*", { count: "exact", head: true }).in(column, doomedKeys);
       if (error) throw new Error(`${table}: ${error.message}`);
@@ -141,7 +145,7 @@ async function main() {
   // Dependents first, then the nodes, then the marker-named rows, then people last —
   // pm_people is referenced by created_by/updated_by on almost everything above.
   if (doomedKeys.length > 0) {
-    for (const table of ["pm_items", "pm_notes", "pm_references", "pm_files", "pm_layout_positions", "pm_node_state"]) {
+    for (const table of ["pm_items", "pm_notes", "pm_references", "pm_files", "pm_layout_positions", "pm_node_state", "pm_rulings"]) {
       const { error } = await db.from(table).delete().in("node_key", doomedKeys);
       if (error) throw new Error(`delete ${table}: ${error.message}`);
     }

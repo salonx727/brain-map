@@ -60,6 +60,11 @@ async function main() {
   }
 
   for (const n of empty) {
+    // The open ruling goes with the card. This deletes pm_nodes directly rather than
+    // going through pmWriter.deletePmNode, so the withdrawal that lives there has to be
+    // repeated here — otherwise Shawn's queue keeps an entry for a card nobody can open.
+    const { error: rulingError } = await client.from("pm_rulings").delete().eq("node_key", n.nodeKey).eq("status", "pending");
+    if (rulingError) throw new Error(`pm_rulings ${n.nodeKey}: ${rulingError.message}`);
     const { error: delError } = await client.from("pm_nodes").delete().eq("node_key", n.nodeKey);
     if (delError) throw new Error(`pm_nodes ${n.nodeKey}: ${delError.message}`);
   }

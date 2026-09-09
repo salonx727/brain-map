@@ -1,3 +1,5 @@
+import type { PmRuling } from "@/lib/types/pm";
+
 export type Shape = "box" | "circle" | "pill";
 
 export type NodeState =
@@ -60,6 +62,15 @@ export type BrainNode = {
   state: NodeState;
   /** canon cards are never removable in one touch; user cards are */
   origin: "canon" | "user";
+  /**
+   * A ruling is open on this card — Shawn has not ruled yet, so it exists on the map but
+   * not in canon. Deliberately NOT a sixth `NodeState`: work state describes build
+   * progress, and a card can honestly be IN BUILD while still awaiting a ruling. Derived
+   * from pm_rulings each render, never stored.
+   */
+  awaitingRuling?: boolean;
+  /** The RUL-014 handle shown beside the marker, when one is open. */
+  rulingRef?: string;
   subs: Item[];
   todos: Item[];
   blockers: Item[];
@@ -103,4 +114,6 @@ export type Model = {
   links: Link[];
   /** unrouted is a state, not an error */
   unrouted: Drop[];
+  /** Open rulings, newest first — the queue rendered on Shawn's card. */
+  rulings: PmRuling[];
 };
