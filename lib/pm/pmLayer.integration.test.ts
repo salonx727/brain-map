@@ -182,7 +182,7 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
     await expect(pmWriter.deletePmNode(serviceClient, "engine:E01")).rejects.toThrow(/not a PM-created node/i);
   }, 20_000);
 
-  it("deletePmNode cascades items/notes/references/files/links/state, then the node itself", async () => {
+  it("deletePmNode cascades items/notes/references/files/links/state/position/ruling, then the node itself", async () => {
     const node = await pmWriter.createPmNode(serviceClient, { label: `${TEST_MARKER}-delete-me` });
     await pmWriter.createItem(serviceClient, { kind: "todo", title: `${TEST_MARKER}-todo`, nodeKey: node.nodeKey });
     await pmWriter.createNote(serviceClient, { kind: "note", body: `${TEST_MARKER}-note`, nodeKey: node.nodeKey });
@@ -190,6 +190,8 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
     const file = await pmWriter.uploadFile(serviceClient, { fileName: `${TEST_MARKER}-file.txt`, contentType: "text/plain", bytes: Buffer.from("x"), nodeKey: node.nodeKey });
     const link = await pmWriter.createNodeLink(serviceClient, { fromNodeKey: CANONICAL_NODE_KEY, toNodeKey: node.nodeKey });
     await pmWriter.setNodeState(serviceClient, { nodeKey: node.nodeKey, state: "DONE" });
+    const layout = await pmWriter.getOrCreateDefaultLayout(serviceClient);
+    await pmWriter.upsertLayoutPosition(serviceClient, { layoutId: layout.id, nodeKey: node.nodeKey, x: 12, y: 34 });
 
     await pmWriter.deletePmNode(serviceClient, node.nodeKey);
 
@@ -199,6 +201,16 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
     expect(layer.links.some((l) => l.id === link.id)).toBe(false);
     expect(layer.states.some((s) => s.nodeKey === node.nodeKey)).toBe(false);
     await expect(pmWriter.getSignedFileUrl(serviceClient, file.storagePath)).rejects.toThrow(/not found/i);
+
+    // Position and ruling are asserted straight against the tables, not through the read
+    // layer: neither is exposed per-node by getPmLayerForNodeKeys, so a leak in either
+    // would have stayed invisible to this test — which is exactly what happened to the
+    // position row until 2026-09-09, leaving one orphan behind for every card ever
+    // deleted, including the only trace left when a real card went missing.
+    const { data: positions } = await serviceClient.from("pm_layout_positions").select("node_key").eq("node_key", node.nodeKey);
+    expect(positions ?? []).toHaveLength(0);
+    const { data: rulings } = await serviceClient.from("pm_rulings").select("id").eq("node_key", node.nodeKey);
+    expect(rulings ?? []).toHaveLength(0);
   }, 20_000);
 
   it("upserts a layout position with position + colour, no lock field exists to set", async () => {

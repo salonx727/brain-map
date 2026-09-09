@@ -554,6 +554,13 @@ export async function deletePmNode(client: SupabaseClient, nodeKey: string): Pro
     ["pm_notes", "node_key"],
     ["pm_references", "node_key"],
     ["pm_node_state", "node_key"],
+    // Position was missing from this list until 2026-09-09, so every card ever deleted
+    // through the app left its x/y behind. Harmless to render — nothing looks up a
+    // position for a node that is gone — but it is the one row that survives a delete, so
+    // it is also the only forensic trace that a card was removed this way rather than by a
+    // script, and leaving it made "what happened to this card" harder to answer than it
+    // needed to be. Clearing it costs nothing; the trace was never worth the orphan.
+    ["pm_layout_positions", "node_key"],
   ] as const) {
     const { error } = await client.from(table).delete().eq(column, nodeKey);
     if (error) throw new Error(`deletePmNode: clearing ${table} failed: ${error.message}`);

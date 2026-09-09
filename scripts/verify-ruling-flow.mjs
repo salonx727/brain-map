@@ -24,6 +24,11 @@ let failed = false;
 
 const cardsBefore = await page.locator(".node").count();
 const awaitingBefore = await page.locator(".node.awaiting").count();
+// Every card already waiting on a ruling, by key. The cleanup below identifies the card it
+// created by diffing against this set, and refuses to delete anything that was here first.
+const awaitingKeysBefore = new Set(
+  (await page.locator(".node.awaiting").evaluateAll((els) => els.map((e) => e.getAttribute("data-id")))).filter(Boolean),
+);
 console.log(`before: ${cardsBefore} cards, ${awaitingBefore} awaiting a ruling`);
 
 // Draw a card from an existing one — the ordinary path, always wired to its parent.
@@ -35,8 +40,23 @@ await addWired.click();
 await page.waitForFunction((n) => document.querySelectorAll(".node").length > n, cardsBefore, { timeout: 30_000 });
 await page.waitForTimeout(800);
 
-// The panel that opens after ADD is the new card's — its key is what cleanup removes.
-const newKey = await page.locator(".node.awaiting").last().getAttribute("data-id");
+// The card this run created, found by diffing against the keys captured before the ADD.
+//
+// This used to take `.node.awaiting` `.last()` and assume DOM order put the new card there.
+// It does not have to: the awaiting cards are drawn in model order, so `.last()` can be a
+// real card of Shawn's that happened to render last — and the cleanup below would then
+// delete THAT one while the test's own card survived. Every count in this script still
+// balances when that happens (one card in, one card out, one ruling in, one ruling out),
+// so the script would report OK while having quietly deleted somebody's work.
+const awaitingKeys = (await page.locator(".node.awaiting").evaluateAll((els) => els.map((e) => e.getAttribute("data-id")))).filter(Boolean);
+const created = awaitingKeys.filter((k) => !awaitingKeysBefore.has(k));
+if (created.length !== 1) {
+  fail(`expected exactly one new awaiting card, found ${created.length} — refusing to delete anything`);
+  await browser.close();
+  console.log("RESULT: FAILED");
+  process.exit(1);
+}
+const newKey = created[0];
 
 const awaitingAfter = await page.locator(".node.awaiting").count();
 console.log(`after add: ${await page.locator(".node").count()} cards, ${awaitingAfter} awaiting a ruling`);

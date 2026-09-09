@@ -162,6 +162,20 @@ a `pm_nodes` row must withdraw its rulings, including test cleanup.** Both kinds
 own ruling is keyed on `node_key`, a wire's is keyed on the two endpoints and has no
 `node_key` at all, so one delete cannot reach both.
 
+**And a third instance of the same shape, found the same afternoon by looking at a
+production screenshot rather than at a test:** a real card ("Blink") had gone from the
+queue. `deletePmNode` cleared items, notes, references, files, links, state and the ruling —
+but never `pm_layout_positions`, so every card ever deleted through the app left its
+position behind. Five had accumulated since 09-08. Nothing renders them, which is exactly
+why nothing caught them. Fixed in `pmWriter.deletePmNode`, asserted directly against the
+table in the integration test (the read layer does not expose positions per node, so the
+leak was invisible through it), and `scripts/purge-orphan-positions.ts` clears the backlog.
+`scripts/verify-ruling-flow.mjs` had a matching hazard: it identified the card it had just
+created as `.node.awaiting.last()`, which is DOM order, not creation order — so it could
+delete one of Shawn's real cards while its own survived, and every count it prints would
+still balance. It now diffs against the keys captured before the ADD and refuses to delete
+anything that was already there.
+
 **The lesson worth keeping:** this file is the only record of what is actually applied,
 and it is hand-maintained. An entry missing here is indistinguishable from a migration
 that was never written. Add the "Applied and live" line in the same session you run the
