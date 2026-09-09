@@ -35,6 +35,7 @@ async function main() {
         type: "data_flow" as const,
         directed: true as const,
         backward: false,
+        evidenceClass: "declared" as const,
         declaringCitation: "verify-live-supabase.ts — deliberately invalid, not real canon",
       },
     ],

@@ -10,8 +10,8 @@
 import { revalidatePath } from "next/cache";
 import { createPmServiceClient } from "@/lib/pm/serviceClient";
 import * as pmWriter from "@/lib/pm/pmWriter";
-import { getRulingsForNodeKeys } from "@/lib/pm/rulingReader";
-import type { ConnectionIntent, PmItem, PmNodeState, PmReference } from "@/lib/types/pm";
+import { getRulingsByIds, getRulingsForNodeKeys } from "@/lib/pm/rulingReader";
+import type { ConnectionIntent, ConnectionRelation, PmItem, PmNodeState, PmReference } from "@/lib/types/pm";
 
 export async function createItemAction(input: { kind: "todo" | "blocker"; title: string; nodeKey?: string | null; detail?: string; ownerId?: string | null; createdBy?: string | null }) {
   const client = createPmServiceClient();
@@ -89,6 +89,22 @@ export async function createNodeLinkAction(input: { fromNodeKey: string; toNodeK
   const link = await pmWriter.createNodeLink(client, input);
   revalidatePath("/");
   return link;
+}
+
+/**
+ * Draws a §35 wire and opens its ruling, returning both the ruling row and the link id so
+ * the surface can show the pending wire and the queue entry without a reload.
+ *
+ * `label` is composed here rather than in the database because it is display text — the
+ * one line Shawn reads in the queue — and it needs the cards' own labels, which the RPC
+ * would have to join two tables it deliberately has no FK into to find.
+ */
+export async function proposeConnectionAction(input: { fromNodeKey: string; toNodeKey: string; relation: ConnectionRelation; label: string; createdBy?: string | null }) {
+  const client = createPmServiceClient();
+  const result = await pmWriter.proposeConnection(client, input);
+  const [ruling] = await getRulingsByIds(client, [result.rulingId]);
+  revalidatePath("/");
+  return { ruling: ruling ?? null, linkId: result.linkId, existing: result.existing };
 }
 
 export async function deleteNodeLinkAction(id: string) {

@@ -4,13 +4,14 @@
 // a read-only caller must not be able to reach a service-role credential by accident.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PmRuling, RulingStatus } from "@/lib/types/pm";
-import type { CanonicalNode } from "@/lib/types/canonicalNode";
+import type { ConnectionRelation, PmRuling, RulingKind, RulingStatus } from "@/lib/types/pm";
+import type { CanonicalConnection, CanonicalNode } from "@/lib/types/canonicalNode";
 
 interface RulingRow {
   id: string;
   ruling_ref: string;
-  node_key: string;
+  kind?: string | null;
+  node_key: string | null;
   label: string;
   parent_node_key: string | null;
   status: string;
@@ -18,6 +19,10 @@ interface RulingRow {
   intent_reads: string | null;
   intent_emits: string | null;
   intent_trigger: string | null;
+  from_node_key?: string | null;
+  to_node_key?: string | null;
+  relation?: string | null;
+  link_id?: string | null;
   submitted_by: string | null;
   submitted_at: string;
   resolved_at: string | null;
@@ -29,6 +34,9 @@ export function rulingRow(r: RulingRow): PmRuling {
   return {
     id: r.id,
     rulingRef: r.ruling_ref,
+    // Defaulted rather than required: 0010's column carries the same default, so a row
+    // read through a client that predates it is a node ruling by definition.
+    kind: (r.kind ?? "node") as RulingKind,
     nodeKey: r.node_key,
     label: r.label,
     parentNodeKey: r.parent_node_key,
@@ -39,6 +47,10 @@ export function rulingRow(r: RulingRow): PmRuling {
       emits: r.intent_emits,
       trigger: r.intent_trigger,
     },
+    fromNodeKey: r.from_node_key ?? null,
+    toNodeKey: r.to_node_key ?? null,
+    relation: (r.relation ?? null) as ConnectionRelation | null,
+    linkId: r.link_id ?? null,
     submittedBy: r.submitted_by,
     submittedAt: r.submitted_at,
     resolvedAt: r.resolved_at,
@@ -55,6 +67,20 @@ export async function getPendingRulings(client: SupabaseClient): Promise<PmRulin
     .eq("status", "pending")
     .order("submitted_at", { ascending: true });
   if (error) throw new Error(`getPendingRulings: ${error.message}`);
+  return (data ?? []).map(rulingRow);
+}
+
+/** Every ruling ever recorded — the sync's retirement pass needs the resolved ones too, to follow a card that already retired into canon. */
+export async function getAllRulings(client: SupabaseClient): Promise<PmRuling[]> {
+  const { data, error } = await client.from("pm_rulings").select("*").order("submitted_at", { ascending: true });
+  if (error) throw new Error(`getAllRulings: ${error.message}`);
+  return (data ?? []).map(rulingRow);
+}
+
+export async function getRulingsByIds(client: SupabaseClient, ids: string[]): Promise<PmRuling[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await client.from("pm_rulings").select("*").in("id", ids);
+  if (error) throw new Error(`getRulingsByIds: ${error.message}`);
   return (data ?? []).map(rulingRow);
 }
 
@@ -107,8 +133,49 @@ export function findReconcileCandidates(pending: PmRuling[], canonicalNodes: Can
 
   const out: ReconcileCandidate[] = [];
   for (const ruling of pending) {
+    // Node rulings only. A link ruling names an edge, not a label, and matches exactly —
+    // it must never be routed through this fuzzy path.
+    if (ruling.kind !== "node") continue;
     const matches = byLabel.get(normalizeLabel(ruling.label));
     if (matches?.length) out.push({ ruling, matches });
   }
   return out;
+}
+
+/**
+ * Pending link rulings whose edge the published snapshot now carries — the wires that
+ * should retire, and unlike node rulings these need no confirming tap.
+ *
+ * The difference is evidential, not a difference in caution. A node ruling matches on a
+ * label a human typed against a label Shawn wrote, and two cards can share a name and mean
+ * different things. An edge is a pair of node keys and a direction: canon either holds
+ * `engine:E10 → engine:E04` or it does not, and no second thing can be meant by it.
+ *
+ * `evidenceClass` is deliberately not consulted. Ruled 2026-09-09: for the question this
+ * function asks — does canon already carry this connection — a declared edge and one
+ * inferred from the target's READS do the same work, and a ruling whose edge is already
+ * live either way is a duplicate whichever route canon took to it.
+ *
+ * A ruling drawn against a PM node that has since retired into canon is resolved through
+ * `ruledIntoNodeKey` first, so the wire someone drew to a card still matches the edge canon
+ * published for the node that card became.
+ */
+export function findCanonicalizedLinkRulings(
+  pending: PmRuling[],
+  canonicalConnections: CanonicalConnection[],
+  /** Every ruling ever recorded, for resolving a retired PM key to the canonical key it became. */
+  allRulings: PmRuling[] = [],
+): PmRuling[] {
+  const edges = new Set(canonicalConnections.map((c) => `${c.fromNodeKey}->${c.toNodeKey}`));
+
+  const retiredInto = new Map<string, string>();
+  for (const r of allRulings) {
+    if (r.kind === "node" && r.nodeKey && r.ruledIntoNodeKey) retiredInto.set(r.nodeKey, r.ruledIntoNodeKey);
+  }
+  const resolve = (key: string): string => retiredInto.get(key) ?? key;
+
+  return pending.filter((r) => {
+    if (r.kind !== "link" || !r.fromNodeKey || !r.toNodeKey) return false;
+    return edges.has(`${resolve(r.fromNodeKey)}->${resolve(r.toNodeKey)}`);
+  });
 }

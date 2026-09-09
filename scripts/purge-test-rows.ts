@@ -103,6 +103,13 @@ async function main() {
       .or(`from_node_key.in.(${doomedKeys.join(",")}),to_node_key.in.(${doomedKeys.join(",")})`);
     if (linkErr) throw new Error(`pm_node_links: ${linkErr.message}`);
     dependents["pm_node_links"] = linkCount ?? 0;
+
+    const { count: linkRulings, error: linkRulingCountErr } = await db
+      .from("pm_rulings")
+      .select("*", { count: "exact", head: true })
+      .or(`from_node_key.in.(${doomedKeys.join(",")}),to_node_key.in.(${doomedKeys.join(",")})`);
+    if (linkRulingCountErr) throw new Error(`pm_rulings (link): ${linkRulingCountErr.message}`);
+    dependents["pm_rulings (link)"] = linkRulings ?? 0;
   }
 
   console.log(APPLY ? "=== PURGING ===" : "=== DRY RUN - nothing will be deleted ===");
@@ -149,6 +156,14 @@ async function main() {
       const { error } = await db.from(table).delete().in("node_key", doomedKeys);
       if (error) throw new Error(`delete ${table}: ${error.message}`);
     }
+    // A LINK ruling has no node_key at all (0010) — it is keyed on the two endpoints — so
+    // the loop above cannot see it. Left behind, a wire ruling for a card that no longer
+    // exists sits in Shawn's queue proposing an edge between something and nothing.
+    const { error: linkRulingErr } = await db
+      .from("pm_rulings")
+      .delete()
+      .or(`from_node_key.in.(${doomedKeys.join(",")}),to_node_key.in.(${doomedKeys.join(",")})`);
+    if (linkRulingErr) throw new Error(`delete pm_rulings (link): ${linkRulingErr.message}`);
     const { error: linkErr } = await db
       .from("pm_node_links")
       .delete()

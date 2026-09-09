@@ -243,9 +243,22 @@ export default function Field3D({
         // signal moving between them. Dotted and dim so it reads as structure in the
         // background rather than competing with a real wire for attention, and it never
         // gets the light-pulse below: there is nothing flowing to animate.
-        ctx.strokeStyle = l.containment ? rgba(lit ? 0.22 : 0.04) : rgba(lit ? (l.back ? 0.75 : 0.34) : 0.05);
+        // Three readings, drawn three ways, because the whole point of the ruling flow is
+        // that a proposal must never look like canon:
+        //   containment — nesting, dotted and dim, no pulse
+        //   awaiting a ruling — a wire somebody drew that Shawn has not ruled on. Dashed
+        //     and dimmer than a canonical edge; it keeps its pulse because it is a claim
+        //     about data flow, but it must not read as a declared one.
+        //   inferred — canon carries it, but no engine declares it: it is read out of the
+        //     target's own READS. Drawn lighter than a declaration for the same reason
+        //     `back` is drawn differently — an unfalsifiable rendering is worse than a
+        //     missing one (§43.1).
+        const strength = l.containment ? 0.22 : l.back ? 0.75 : l.awaitingRuling ? 0.2 : l.evidence === "inferred" ? 0.22 : 0.34;
+        ctx.strokeStyle = rgba(lit ? strength : l.containment ? 0.04 : 0.05);
         ctx.lineWidth = l.back ? 1.6 : 1;
-        ctx.setLineDash(l.containment ? [2, 5] : l.back ? [7, 5] : []);
+        ctx.setLineDash(
+          l.containment ? [2, 5] : l.back ? [7, 5] : l.awaitingRuling ? [4, 4] : l.evidence === "inferred" ? [1, 4] : [],
+        );
         ctx.beginPath();
         ctx.moveTo(path[0].x, path[0].y);
         for (let k = 1; k <= SEG; k++) ctx.lineTo(path[k].x, path[k].y);

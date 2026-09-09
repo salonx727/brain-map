@@ -15,15 +15,16 @@ import {
 } from "@/lib/graph";
 import {
   clearUiSlotAction,
-  createNodeLinkAction,
   deleteFileAction,
   deleteNodeLinkAction,
+  proposeConnectionAction,
   renamePmNodeAction,
   updateNodeLinkAction,
 } from "@/app/actions/pm";
 import { updateRulingIntentAction } from "@/app/actions/rulings";
+import { connectionSummary } from "@/lib/pm/coyoteText";
 import type { BrainNode, Link } from "@/lib/types";
-import type { ConnectionIntent } from "@/lib/types/pm";
+import type { ConnectionIntent, ConnectionRelation } from "@/lib/types/pm";
 import ListEditor from "./ListEditor";
 import RulingList from "./RulingList";
 import WirePicker, { optionsFromModel } from "./WirePicker";
@@ -38,6 +39,21 @@ const INTENT_FIELDS = [
   { key: "emits", label: "EMITS", hint: "What this emits at session close" },
   { key: "trigger", label: "TRIGGER", hint: "What intake object starts this" },
 ] as const;
+
+/**
+ * The same four fields, as the choice a wire has to make before it can be drawn.
+ *
+ * Required, not defaulted — Shawn's operator, 2026-09-09. A default would put a relation
+ * Shawn never chose into the §35 block he is about to paste, and DOWNSTREAM guessed wrong
+ * is not a smaller mistake than no wire at all: READS and TRIGGER are written on the other
+ * end of the edge entirely (see coyoteText.ts).
+ */
+const RELATIONS: { key: ConnectionRelation; label: string; hint: string }[] = [
+  { key: "downstream", label: "DOWNSTREAM", hint: "This card writes it · that card reads it" },
+  { key: "reads", label: "READS", hint: "That card's data flows into this one" },
+  { key: "emits", label: "EMITS", hint: "This card emits it at session close" },
+  { key: "trigger", label: "TRIGGER", hint: "That intake object starts this one" },
+];
 
 export default function ControlPanel({
   d,
@@ -75,6 +91,8 @@ export default function ControlPanel({
   );
 
   const [retargetId, setRetargetId] = useState<string | null>(null);
+  /** Which §35 field the next wire asserts. Null until picked — a wire has to say what it means before it can be drawn. */
+  const [relation, setRelation] = useState<ConnectionRelation | null>(null);
   const [over, setOver] = useState(false);
   const [delArmed, setDelArmed] = useState(false);
   const delTimer = useRef<number | null>(null);
@@ -99,6 +117,7 @@ export default function ControlPanel({
     model.order,
     d.id,
     (oid) => hasLink(model.links, d.id, oid),
+    true,
   );
 
   /**
@@ -131,13 +150,40 @@ export default function ControlPanel({
       );
       return;
     }
-    const link: Link = { a: d.id, b: targetId };
+    if (!relation) return; // the picker is disabled without one; this is the belt to that brace
+
+    // Stored in DATA-FLOW direction, never in the order the two cards were clicked.
+    // connections.ts reads DOWNSTREAM/EMITS outward from the declaring engine and READS/
+    // TRIGGER inward toward it, so a proposal written the other way round would never
+    // match the edge canon eventually publishes, and would sit in Shawn's queue forever
+    // after he had already ruled on it.
+    const outward = relation === "downstream" || relation === "emits";
+    const from = outward ? d.id : targetId;
+    const to = outward ? targetId : d.id;
+
+    const link: Link = { a: from, b: to, relation, awaitingRuling: true };
     model.links.push(link);
     bump();
+
+    const fromLabel = `${model.nodes[from]?.ref ?? ""} ${model.nodes[from]?.name ?? ""}`.trim();
+    const toLabel = `${model.nodes[to]?.ref ?? ""} ${model.nodes[to]?.name ?? ""}`.trim();
+
     persist(
       async () => {
-        const created = await createNodeLinkAction({ fromNodeKey: link.a, toNodeKey: link.b });
-        link.id = created.id;
+        const { ruling, linkId } = await proposeConnectionAction({
+          fromNodeKey: from,
+          toNodeKey: to,
+          relation,
+          label: connectionSummary(fromLabel, relation, toLabel),
+        });
+        link.id = linkId ?? undefined;
+        if (ruling) {
+          link.rulingRef = ruling.rulingRef;
+          // Straight onto Shawn's queue, without a reload — the same reason a new card
+          // carries its ruling back: a proposal that does not visibly reach him looks
+          // like it was accepted.
+          if (!model.rulings.some((r) => r.id === ruling.id)) model.rulings = [...model.rulings, ruling];
+        }
         bump();
       },
       () => {
@@ -436,24 +482,52 @@ export default function ControlPanel({
       {tab === 4 ? (
         <div className="sect">
           <div className="lab">{retargetId ? "MOVE THIS WIRE TO…" : "WIRE TO ANY CARD"}</div>
-          <WirePicker
-            options={
-              retargetId
-                ? optionsFromModel(
-                    model.nodes,
-                    model.order,
-                    d.id,
-                    (oid) => {
-                      const editing = model.links.find((l) => l.id === retargetId);
-                      if (editing && otherEnd(editing, d.id) === oid) return false;
-                      return hasLink(model.links, d.id, oid);
-                    },
-                  )
-                : wireOptions
-            }
-            onPick={applyWire}
-            placeholder={retargetId ? "Pick the new other end…" : "Search every card on the map…"}
-          />
+
+          {/* A wire is an assertion about §35, so it has to name which field it asserts
+              before it can be drawn at all. Nothing is preselected: see RELATIONS. */}
+          {!retargetId ? (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {RELATIONS.map((r) => (
+                  <button
+                    key={r.key}
+                    className={"act" + (relation === r.key ? " armed" : "")}
+                    style={{ padding: "6px 10px", fontSize: 9 }}
+                    title={r.hint}
+                    onClick={() => setRelation(relation === r.key ? null : r.key)}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              <div className="cap" style={{ marginBottom: 8 }}>
+                {relation
+                  ? RELATIONS.find((r) => r.key === relation)?.hint.toUpperCase()
+                  : "PICK WHAT THE WIRE MEANS FIRST · IT GOES TO SHAWN AS A RULING, NOT TO CANON"}
+              </div>
+            </>
+          ) : null}
+
+          {retargetId || relation ? (
+            <WirePicker
+              options={
+                retargetId
+                  ? optionsFromModel(
+                      model.nodes,
+                      model.order,
+                      d.id,
+                      (oid) => {
+                        const editing = model.links.find((l) => l.id === retargetId);
+                        if (editing && otherEnd(editing, d.id) === oid) return false;
+                        return hasLink(model.links, d.id, oid);
+                      },
+                    )
+                  : wireOptions
+              }
+              onPick={applyWire}
+              placeholder={retargetId ? "Pick the new other end…" : "Search every card on the map…"}
+            />
+          ) : null}
           {retargetId ? (
             <button className="act" style={{ width: "100%", marginTop: 8 }} onClick={() => setRetargetId(null)}>
               CANCEL MOVE
@@ -473,10 +547,25 @@ export default function ControlPanel({
               return (
                 <div className="item" key={l.id ?? i} style={{ display: "block" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                    <span>{other.ref + "  " + (other.name || "")}</span>
+                    <span>
+                      {other.ref + "  " + (other.name || "")}
+                      {l.relation ? <span className="cap" style={{ marginLeft: 8 }}>{l.relation.toUpperCase()}</span> : null}
+                      {l.awaitingRuling ? (
+                        <span className="cap ruling" style={{ marginLeft: 8 }} title="Waiting on Shawn's ruling — not canon">
+                          {l.rulingRef ?? "RULING"}
+                        </span>
+                      ) : null}
+                    </span>
                     {l.canon ? (
-                      <span className="cap" title="Declared by COYOTE">
-                        CANON
+                      <span
+                        className="cap"
+                        title={
+                          l.evidence === "inferred"
+                            ? "Inferred — no engine declares this edge; the target's own READS names the source"
+                            : "Declared by COYOTE"
+                        }
+                      >
+                        {l.evidence === "inferred" ? "INFERRED" : "CANON"}
                       </span>
                     ) : l.containment ? (
                       <span className="cap" title="Nesting, derived from this card's parent — not a wire to delete">

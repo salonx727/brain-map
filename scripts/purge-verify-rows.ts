@@ -56,6 +56,17 @@ async function main() {
       .or(`from_node_key.eq.${n.node_key},to_node_key.eq.${n.node_key}`);
     if (linkError) throw new Error(`pm_node_links ${n.node_key}: ${linkError.message}`);
 
+    // Both kinds of ruling this card could have opened: its own (keyed on node_key) and
+    // any wire drawn from or to it (keyed on the endpoints, with no node_key at all).
+    // Leaving either behind puts an entry in the one queue Shawn works through by hand.
+    const { error: rulingError } = await client.from("pm_rulings").delete().eq("node_key", n.node_key);
+    if (rulingError) throw new Error(`pm_rulings ${n.node_key}: ${rulingError.message}`);
+    const { error: linkRulingError } = await client
+      .from("pm_rulings")
+      .delete()
+      .or(`from_node_key.eq.${n.node_key},to_node_key.eq.${n.node_key}`);
+    if (linkRulingError) throw new Error(`pm_rulings (link) ${n.node_key}: ${linkRulingError.message}`);
+
     const { error } = await client.from("pm_nodes").delete().eq("node_key", n.node_key);
     if (error) throw new Error(`pm_nodes ${n.node_key}: ${error.message}`);
   }

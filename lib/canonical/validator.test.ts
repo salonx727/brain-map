@@ -16,7 +16,7 @@ function node(nodeKey: string, kind: CanonicalNode["kind"] = "intake"): Canonica
 }
 
 function edge(from: string, to: string, citation = "§35.2 EMITS — x", backward = false): CanonicalConnection {
-  return { fromNodeKey: from, toNodeKey: to, type: "data_flow", directed: true, backward, declaringCitation: citation };
+  return { fromNodeKey: from, toNodeKey: to, type: "data_flow", directed: true, backward, evidenceClass: "declared", declaringCitation: citation };
 }
 
 describe("validateCanonicalGraph", () => {

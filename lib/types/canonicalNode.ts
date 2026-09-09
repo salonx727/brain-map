@@ -144,6 +144,23 @@ export interface CanonicalConnection {
    * must be checkable is canon, not preference).
    */
   backward: boolean;
+  /**
+   * How the extractor knows this edge exists.
+   *
+   * `declared` — the source engine's own DOWNSTREAM / EMITS / TRIGGER names the target.
+   * `inferred` — the source declares nothing, but the TARGET's READS names the source, so
+   * the edge is read backwards out of the reader's own contract. Three edges are inferred
+   * in the 2026-09-09 snapshot: TAG → SIGNAL, TAG → AFTERBURNER, AFTERBURNER → NEXUS.
+   *
+   * Recorded because the map drew the two identically and nobody could tell an inference
+   * from a declaration — the same unfalsifiable-claim objection §43.1 raises, and the same
+   * reason `backward` exists. Display only: it deliberately does not gate ruling
+   * retirement (Shawn's operator, 2026-09-09 — for "does canon already carry this
+   * connection", both classes do the same work).
+   */
+  evidenceClass: EvidenceClass;
   /** The exact §35 text asserting this edge exists. An edge with no citation is an assertion, not canon. */
   declaringCitation: string;
 }
+
+export type EvidenceClass = "declared" | "inferred";

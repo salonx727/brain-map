@@ -105,6 +105,63 @@ list in this app that a person works through by hand, so junk there costs real t
 scripts now clear `pm_rulings` too. Any future script that deletes a `pm_nodes` row must do
 the same.
 
+`0010_connection_rulings.sql` (2026-09-09) — the same ruling flow, extended from cards to
+**wires**, plus `canonical_connections.evidence_class`.
+
+Shawn's operator that afternoon: a wire drawn on the map is an assertion about §35, so it
+goes to Shawn exactly as a card does. Four things follow from that, and each is in the
+migration:
+
+- `pm_node_links.relation` — which §35 field the wire asserts (`downstream` / `reads` /
+  `emits` / `trigger`). Picked in the UI, never defaulted. The four fields do not all run
+  the same way (DOWNSTREAM and EMITS are written on the source's card, READS and TRIGGER on
+  the target's), so `lib/pm/coyoteText.ts` mirrors `lib/coyote/extractors/connections.ts`
+  exactly when it writes the paste-ready block. A block headed with the wrong engine would
+  parse back as a *backwards edge* on the next sync — the app causing a canon error through
+  a person, which no amount of read-only discipline elsewhere would undo.
+- `pm_rulings.kind` (`node` | `link`) with `from_node_key` / `to_node_key` / `relation` /
+  `link_id`, and `node_key` made nullable. The one-pending-per-node index is now filtered to
+  `kind = 'node'`, with a matching one-pending-per-edge index for links.
+- **0002's endpoint trigger is narrowed, not dropped.** Engine-to-engine still cannot be
+  written freely — it is allowed only while an open ruling covers that exact edge. §35
+  remains the sole author of engine-to-engine data flow; what changed is that a human can
+  now propose one and have Shawn rule on it, instead of the database refusing the row and
+  the map silently losing the observation.
+- `propose_connection()` and `retire_link_ruling()` — link and ruling created and destroyed
+  together, in one statement each. `retire_pm_node_into_canonical()` no longer deletes a
+  typed wire that would become engine-to-engine on retirement; it opens a new link ruling
+  for it, because that wire is a claim somebody made and deleting it silently loses it.
+
+**Wire retirement is automatic; card retirement still is not, and that asymmetry is
+deliberate.** A card matches on a label Shawn rewrote in his own words, so it needs a
+confirming tap. An edge matches on two node keys, which are exact, so `sync-coyote.ts`
+retires it as soon as canon carries it — no queue entry survives a ruling he already made.
+
+`evidence_class` (`declared` | `inferred`) records *how* the parser derived a canonical
+edge: `declared` when the source's own DOWNSTREAM/EMITS/TRIGGER names the target,
+`inferred` when only the target's READS names the source. On the current COYOTE that is 19
+declared and 3 inferred (TAG→SIGNAL, TAG→AFTERBURNER, AFTERBURNER→NEXUS). It is drawn
+differently in the field and **does not gate retirement** — Shawn's operator, 2026-09-09:
+for "does canon already carry this connection", the two do the same work.
+
+**Applied and live** (2026-09-09, same project, `scripts/apply-migration.mjs`): 143/143 pass
+afterwards including both live-Supabase files, `npm run sync:coyote -- --force` republished
+cleanly reporting 19 declared / 3 inferred, and `scripts/verify-connection-ruling.mjs`
+confirms end to end that an engine-to-engine wire is offered (marked RULING rather than
+refused), that the roster is unreachable until a relation is picked, that the ruling reaches
+Shawn's card carrying a §35 block headed with the *source* engine for a DOWNSTREAM, and that
+REJECT withdraws both the ruling and the wire.
+
+**The 0009 lesson repeated itself immediately, in a place that had not been checked:**
+`pmLayer.integration.test.ts`'s own `afterAll` also deletes `pm_nodes` directly, so every
+`npm test` run had been leaving five rulings behind for cards it had just deleted. Fifteen
+had accumulated across three runs. The cleanup now clears `pm_rulings` too, and
+`scripts/purge-orphan-rulings.ts` exists to find any that get past it —
+`scripts/peek-rulings.ts` shows the queue with orphans marked. **Any code path that deletes
+a `pm_nodes` row must withdraw its rulings, including test cleanup.** Both kinds: a card's
+own ruling is keyed on `node_key`, a wire's is keyed on the two endpoints and has no
+`node_key` at all, so one delete cannot reach both.
+
 **The lesson worth keeping:** this file is the only record of what is actually applied,
 and it is hand-maintained. An entry missing here is indistinguishable from a migration
 that was never written. Add the "Applied and live" line in the same session you run the

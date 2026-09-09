@@ -38,7 +38,10 @@ export default function ReconcileTray({ candidates }: { candidates: ReconcileCan
               onClick={async () => {
                 setBusy(ruling.id);
                 try {
-                  await retireRulingAction(ruling.nodeKey, m.nodeKey);
+                  // findReconcileCandidates only ever yields node rulings, which always
+                  // carry a node_key — the cast records that rather than inventing a
+                  // fallback for a case this tray cannot be handed.
+                  await retireRulingAction(ruling.nodeKey as string, m.nodeKey);
                   setDismissed((d) => [...d, ruling.id]);
                 } finally {
                   setBusy(null);

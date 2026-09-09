@@ -533,6 +533,35 @@ body.wire3d #declare {
   display: flex;
 }
 
+/* The §35 block Shawn copies out of a ruling. Monospaced and pre-wrapped because it is
+   about to be pasted into COYOTE, where the line breaks and the field labels are the
+   thing that carries meaning — reflowing it as prose would hand him a block that no
+   longer parses back. Shown rather than hidden behind the button on purpose: nothing in
+   this app should ask him to paste something into canon sight-unseen. */
+.coyote-block {
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: var(--font-space-mono), monospace;
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+/* Same baton outline the card face uses for a pending card — a pending wire is the same
+   state, said about an edge. */
+.cap.ruling {
+  padding: 1px 5px;
+  border: 1px solid var(--baton);
+  border-radius: 3px;
+  color: var(--baton);
+}
+
 /* ---------- counters, as drawn ---------- */
 .counter {
   position: absolute;

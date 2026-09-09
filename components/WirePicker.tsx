@@ -10,17 +10,28 @@ export type WireOption = {
   reason: string;
 };
 
-/** COYOTE's own engines/screens — not owner cards, not PM cards. Two of these cannot be joined by a PM wire. */
+/** COYOTE's own engines/screens — not owner cards, not PM cards. */
 function isCanonicalGraphNode(node: BrainNode): boolean {
   return node.origin === "canon" && !node.id.startsWith("owner:");
 }
 
-/** Every other card on the map, labelled the way the card itself is labelled. */
+/**
+ * Every other card on the map, labelled the way the card itself is labelled.
+ *
+ * `allowCanonPairs` is the 0010 change. Engine-to-engine used to be unpickable outright,
+ * because §35 is the only author of engine-to-engine data flow and the database refused
+ * the row. It still is the only author — but there is now a route by which a human can
+ * propose one and have Shawn rule on it, so on the propose path the pair is offered and
+ * marked RULING rather than hidden. The retarget path leaves it off: moving an existing
+ * wire onto a canonical pair would need a ruling of its own, and silently offering an
+ * option the database will reject is worse than not offering it.
+ */
 export function optionsFromModel(
   nodes: Record<string, BrainNode>,
   order: string[],
   fromId: string,
   isWired: (id: string) => boolean,
+  allowCanonPairs = false,
 ): WireOption[] {
   const from = nodes[fromId];
   const fromCanon = !!from && isCanonicalGraphNode(from);
@@ -29,7 +40,10 @@ export function optionsFromModel(
     const other = nodes[oid];
     const label = (other.ref + "  " + (other.name || "")).trim();
     if (isWired(oid)) return { id: oid, label, disabled: true, reason: "WIRED" };
-    if (fromCanon && isCanonicalGraphNode(other)) return { id: oid, label, disabled: true, reason: "COYOTE" };
+    if (fromCanon && isCanonicalGraphNode(other)) {
+      if (!allowCanonPairs) return { id: oid, label, disabled: true, reason: "COYOTE" };
+      return { id: oid, label, disabled: false, reason: "RULING" };
+    }
     return { id: oid, label, disabled: false, reason: "" };
   });
 }

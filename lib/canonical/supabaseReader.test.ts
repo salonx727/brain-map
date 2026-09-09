@@ -49,6 +49,7 @@ describe("supabaseReader row mapping — round trip against publisher.ts", () =>
       type: "data_flow",
       directed: true,
       backward: false,
+      evidenceClass: "declared",
       declaringCitation: "§35.2 TRIGGER — booking confirmed",
     };
     const row = toConnectionRow(original);

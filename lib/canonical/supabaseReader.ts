@@ -27,6 +27,7 @@ export interface CanonicalConnectionRow {
   edge_type: string;
   directed: boolean;
   backward: boolean;
+  evidence_class: string;
   declaring_citation: string;
 }
 
@@ -49,6 +50,10 @@ export function connectionRowToCanonicalConnection(row: CanonicalConnectionRow):
     type: row.edge_type,
     directed: row.directed,
     backward: row.backward,
+    // A snapshot published before 0010 has no evidence column at all. Reading it as
+    // declared matches what the column's own default backfilled those rows to, so an old
+    // snapshot and a re-read of it never disagree.
+    evidenceClass: row.evidence_class === "inferred" ? "inferred" : "declared",
     declaringCitation: row.declaring_citation,
   } as CanonicalConnection;
 }
@@ -85,7 +90,7 @@ export async function fetchCanonicalGraphFromSupabase(client: SupabaseClient): P
   const [snapshotResult, nodesResult, connectionsResult] = await Promise.all([
     client.from("canonical_snapshots").select("diagnostics").eq("id", activeSnapshotId).limit(1),
     client.from("canonical_nodes").select("node_key, kind, label, canon_refs, field_states").eq("snapshot_id", activeSnapshotId),
-    client.from("canonical_connections").select("from_node_key, to_node_key, edge_type, directed, backward, declaring_citation").eq("snapshot_id", activeSnapshotId),
+    client.from("canonical_connections").select("from_node_key, to_node_key, edge_type, directed, backward, evidence_class, declaring_citation").eq("snapshot_id", activeSnapshotId),
   ]);
 
   if (snapshotResult.error) {

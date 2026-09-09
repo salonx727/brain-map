@@ -55,6 +55,14 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
         await serviceClient.from(table).delete().in("node_key", keys);
       }
       await serviceClient.from("pm_node_links").delete().or(`from_node_key.in.(${keys.join(",")}),to_node_key.in.(${keys.join(",")})`);
+      // Since 0009 every createPmNode opens a ruling, and since 0010 a wire can open one
+      // too. This cleanup deletes pm_nodes directly rather than going through
+      // deletePmNode, so the withdrawal that lives there has to be repeated here — and it
+      // is not a tidiness point: a ruling left behind is a row in the one queue Shawn
+      // works through by hand, for a card that no longer exists. Fifteen of them
+      // accumulated across three runs before this was caught.
+      await serviceClient.from("pm_rulings").delete().in("node_key", keys);
+      await serviceClient.from("pm_rulings").delete().or(`from_node_key.in.(${keys.join(",")}),to_node_key.in.(${keys.join(",")})`);
       await serviceClient.from("pm_nodes").delete().in("node_key", keys);
     }
 

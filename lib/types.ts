@@ -1,4 +1,5 @@
-import type { PmRuling } from "@/lib/types/pm";
+import type { ConnectionRelation, PmRuling } from "@/lib/types/pm";
+import type { EvidenceClass } from "@/lib/types/canonicalNode";
 
 export type Shape = "box" | "circle" | "pill";
 
@@ -100,6 +101,24 @@ export type Link = {
    * distinctly (dim, no light-pulse) so nesting reads as nesting, not as a real data-flow edge.
    */
   containment?: boolean;
+  /**
+   * Which §35 field this wire asserts. Set on a canon edge from how the parser read it,
+   * and on a PM wire from what the person drawing it picked. Undefined for a containment
+   * wire, which asserts nothing.
+   */
+  relation?: ConnectionRelation;
+  /**
+   * `inferred` — canon carries this edge only because the TARGET's READS names the source,
+   * not because the source declared it. Drawn distinctly: an inference and a declaration
+   * looking identical is what made the distinction uncheckable before 0010.
+   */
+  evidence?: EvidenceClass;
+  /**
+   * A PM wire whose ruling is still open. Drawn as a proposal, never as canon — the whole
+   * point is that a drawn edge must not read as a declared one until Shawn has ruled.
+   */
+  awaitingRuling?: boolean;
+  rulingRef?: string;
 };
 
 export type TagKey = "screens" | "todos" | "blockers" | "drops" | "subs";

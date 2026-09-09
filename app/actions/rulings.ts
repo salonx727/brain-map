@@ -27,6 +27,14 @@ export async function rejectRulingAction(nodeKey: string, note?: string | null) 
   return ruling;
 }
 
+/** Rejects any ruling by its own id — the only form that works for a link ruling, which has no node_key to key off. */
+export async function rejectRulingByIdAction(rulingId: string, note?: string | null) {
+  const client = createPmServiceClient();
+  const ruling = await rulingWriter.rejectRulingById(client, rulingId, note);
+  revalidatePath("/");
+  return ruling;
+}
+
 /**
  * Confirms that a canonical node in the published snapshot is the card someone drew, and
  * folds the PM row into it. The confirmation is the whole safety mechanism — see

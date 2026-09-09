@@ -114,8 +114,16 @@ function layoutPositionRow(r: { layout_id: string; node_key: string; x: number; 
   return { layoutId: r.layout_id, nodeKey: r.node_key, x: r.x, y: r.y, color: r.color, updatedBy: r.updated_by, updatedAt: r.updated_at };
 }
 
-function linkRow(r: { id: string; from_node_key: string; to_node_key: string; citation: string | null; created_by: string | null; created_at: string }): PmNodeLink {
-  return { id: r.id, fromNodeKey: r.from_node_key, toNodeKey: r.to_node_key, citation: r.citation, createdBy: r.created_by, createdAt: r.created_at };
+function linkRow(r: { id: string; from_node_key: string; to_node_key: string; relation?: string | null; citation: string | null; created_by: string | null; created_at: string }): PmNodeLink {
+  return {
+    id: r.id,
+    fromNodeKey: r.from_node_key,
+    toNodeKey: r.to_node_key,
+    relation: (r.relation ?? null) as PmNodeLink["relation"],
+    citation: r.citation,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+  };
 }
 
 function nodeStateRow(r: { node_key: string; state: string; updated_by: string | null; updated_at: string }): PmNodeState {

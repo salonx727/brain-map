@@ -65,6 +65,14 @@ async function main() {
     // repeated here — otherwise Shawn's queue keeps an entry for a card nobody can open.
     const { error: rulingError } = await client.from("pm_rulings").delete().eq("node_key", n.nodeKey).eq("status", "pending");
     if (rulingError) throw new Error(`pm_rulings ${n.nodeKey}: ${rulingError.message}`);
+    // And any wire ruling drawn from or to it — those carry no node_key (0010), so the
+    // delete above cannot reach them.
+    const { error: linkRulingError } = await client
+      .from("pm_rulings")
+      .delete()
+      .eq("status", "pending")
+      .or(`from_node_key.eq.${n.nodeKey},to_node_key.eq.${n.nodeKey}`);
+    if (linkRulingError) throw new Error(`pm_rulings (link) ${n.nodeKey}: ${linkRulingError.message}`);
     const { error: delError } = await client.from("pm_nodes").delete().eq("node_key", n.nodeKey);
     if (delError) throw new Error(`pm_nodes ${n.nodeKey}: ${delError.message}`);
   }

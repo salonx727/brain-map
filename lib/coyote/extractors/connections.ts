@@ -17,7 +17,7 @@
 // INT BOOKING). matchesAsObject() is what makes them safe: canon capitalizes an object
 // reference and lowercases the ordinary word, without exception in this document.
 
-import type { CanonicalConnection, Diagnostic, EngineNode } from "@/lib/types/canonicalNode";
+import type { CanonicalConnection, Diagnostic, EngineNode, EvidenceClass } from "@/lib/types/canonicalNode";
 import { NODE_REGISTRY } from "@/lib/coyote/nodeRegistry";
 
 // A DOWNSTREAM line names another engine (§35.0: "every engine writes data another engine
@@ -128,16 +128,32 @@ export function extractConnections(engineNodes: EngineNode[]): { connections: Ca
   const seen = new Set<string>();
   const byNodeKey = new Map(engineNodes.map((n) => [n.nodeKey, n]));
 
-  function addEdge(from: string, to: string, citation: string, backward: boolean): void {
+  /**
+   * `evidence` records which of the two ways above produced this edge, and the distinction
+   * is not cosmetic. DOWNSTREAM/EMITS/TRIGGER are `declared`: the source engine's own
+   * contract names the target. READS is `inferred`: the source names nothing and the edge
+   * is read backwards out of the TARGET's contract. Three of the twenty-two edges in the
+   * 2026-09-09 snapshot are inferred, and until 0010 the map drew them exactly like the
+   * declared ones — an inference presented as a declaration, which is the same
+   * unfalsifiable-claim problem §43.1 raises and the reason `backward` was split out.
+   *
+   * First writer wins on a duplicate, so the declared fields are read in a full pass of
+   * their own before READS is read at all. Interleaving them per-engine would let E01's
+   * READS reach E05 before E05's own DOWNSTREAM was ever looked at, and the edge would be
+   * recorded as inferred when canon declares it outright.
+   */
+  function addEdge(from: string, to: string, citation: string, backward: boolean, evidence: EvidenceClass): void {
     if (from === to) return; // never a self-edge
     const key = `${from}->${to}`;
     if (seen.has(key)) return; // first writer wins — the backward edge is added before the loop below, so it can never be silently overwritten by a plain duplicate
     seen.add(key);
-    connections.push({ fromNodeKey: from, toNodeKey: to, type: "data_flow", directed: true, backward, declaringCitation: citation });
+    connections.push({ fromNodeKey: from, toNodeKey: to, type: "data_flow", directed: true, backward, evidenceClass: evidence, declaringCitation: citation });
   }
 
+  // Declared, not inferred: §35.8 asserts this edge in AFTERBURNER's own section, in its
+  // own WRITES field. It is unusual in direction, not in evidence.
   if (byNodeKey.has(BACKWARD_EDGE.from) && byNodeKey.has(BACKWARD_EDGE.to)) {
-    addEdge(BACKWARD_EDGE.from, BACKWARD_EDGE.to, BACKWARD_EDGE.citation, true);
+    addEdge(BACKWARD_EDGE.from, BACKWARD_EDGE.to, BACKWARD_EDGE.citation, true, "declared");
   }
 
   /**
@@ -166,13 +182,14 @@ export function extractConnections(engineNodes: EngineNode[]): { connections: Ca
     return matches[0].nodeKey;
   }
 
+  // Pass one — everything canon declares in the source's own section.
   for (const engine of engineNodes) {
     // DOWNSTREAM: this engine writes, the named engine reads. Edge runs outward.
     if (engine.downstream.state === "present") {
       const declared = engine.downstream.value.split(/\n\s*\n/)[0];
       for (const target of splitDownstreamTargets(engine.downstream.value)) {
         const to = resolveEngineTarget("DOWNSTREAM", engine, target);
-        if (to) addEdge(engine.nodeKey, to, `§35 ${engine.label} — DOWNSTREAM: "${declared}"`, false);
+        if (to) addEdge(engine.nodeKey, to, `§35 ${engine.label} — DOWNSTREAM: "${declared}"`, false, "declared");
       }
     }
 
@@ -182,10 +199,32 @@ export function extractConnections(engineNodes: EngineNode[]): { connections: Ca
     if (engine.emits.state === "present") {
       for (const target of splitEmitsTargets(engine.emits.value)) {
         const to = resolveEngineTarget("EMITS", engine, target);
-        if (to) addEdge(engine.nodeKey, to, `§35 ${engine.label} — EMITS AT SESSION CLOSE → ${target}`, false);
+        if (to) addEdge(engine.nodeKey, to, `§35 ${engine.label} — EMITS AT SESSION CLOSE → ${target}`, false, "declared");
       }
     }
 
+    // TRIGGER names an intake object, never an engine — the one place INT BOOKING and
+    // INT GATE can originate an edge. Guarded by matchesAsObject: see its comment for the
+    // real lowercase "booking" that made this field unparseable before.
+    //
+    // Declared, even though the target's section is where it is written: an intake object
+    // has no §35 subsection of its own to declare anything from, so the engine's TRIGGER
+    // line is canon's only and intended place to assert it.
+    if (engine.trigger.state === "present") {
+      const declared = engine.trigger.value.split(/\n\s*\n/)[0];
+      for (const segment of splitSegments(declared)) {
+        const matches = INTAKE_ALIASES.filter((e) => e.aliases.some((alias) => matchesAsObject(segment, alias)));
+        if (matches.length === 1) {
+          addEdge(matches[0].nodeKey, engine.nodeKey, `§35 ${engine.label} — TRIGGER: "${segment}"`, false, "declared");
+        }
+      }
+    }
+  }
+
+  // Pass two — edges no engine declares, recovered from the reader's own contract. Runs
+  // after every declared edge is already recorded so first-writer-wins can never label a
+  // declaration as an inference.
+  for (const engine of engineNodes) {
     // READS runs the other way. "E07 AFTERBURNER READS TAG attribution chain" means data
     // moves TAG → AFTERBURNER, so the edge is inbound. Reading this field in the same
     // direction as DOWNSTREAM would draw every one of these arrows backwards.
@@ -197,20 +236,7 @@ export function extractConnections(engineNodes: EngineNode[]): { connections: Ca
         // record names ("`session_date`", "client record") — so no diagnostic is raised
         // for a miss, unlike DOWNSTREAM where every segment is meant to be an engine.
         if (matches.length === 1 && matches[0].nodeKey !== engine.nodeKey) {
-          addEdge(matches[0].nodeKey, engine.nodeKey, `§35 ${engine.label} — READS: "${target}"`, false);
-        }
-      }
-    }
-
-    // TRIGGER names an intake object, never an engine — the one place INT BOOKING and
-    // INT GATE can originate an edge. Guarded by matchesAsObject: see its comment for the
-    // real lowercase "booking" that made this field unparseable before.
-    if (engine.trigger.state === "present") {
-      const declared = engine.trigger.value.split(/\n\s*\n/)[0];
-      for (const segment of splitSegments(declared)) {
-        const matches = INTAKE_ALIASES.filter((e) => e.aliases.some((alias) => matchesAsObject(segment, alias)));
-        if (matches.length === 1) {
-          addEdge(matches[0].nodeKey, engine.nodeKey, `§35 ${engine.label} — TRIGGER: "${segment}"`, false);
+          addEdge(matches[0].nodeKey, engine.nodeKey, `§35 ${engine.label} — READS: "${target}"`, false, "inferred");
         }
       }
     }

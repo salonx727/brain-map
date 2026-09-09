@@ -92,6 +92,7 @@ export function toConnectionRow(conn: CanonicalConnection) {
     edge_type: conn.type,
     directed: conn.directed,
     backward: conn.backward,
+    evidence_class: conn.evidenceClass,
     declaring_citation: conn.declaringCitation,
   };
 }

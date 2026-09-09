@@ -11,7 +11,7 @@
 // canonical_* table — only publisher.ts does that, and this file doesn't import it.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ConnectionIntent, PmFile, PmItem, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
+import type { ConnectionIntent, ConnectionRelation, PmFile, PmItem, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
 import { createRuling } from "@/lib/pm/rulingWriter";
 
 const BUCKET = "pm-files";
@@ -439,11 +439,51 @@ export async function createNodeLink(client: SupabaseClient, input: { fromNodeKe
     .select()
     .single();
   const row = unwrap({ data, error }, "createNodeLink");
-  return { id: row.id, fromNodeKey: row.from_node_key, toNodeKey: row.to_node_key, citation: row.citation, createdBy: row.created_by, createdAt: row.created_at };
+  return { id: row.id, fromNodeKey: row.from_node_key, toNodeKey: row.to_node_key, relation: row.relation ?? null, citation: row.citation, createdBy: row.created_by, createdAt: row.created_at };
 }
 
-/** Removes a wire. No trigger to satisfy on delete (the PM-endpoint rule only gates insert/update) — a plain delete by id. */
+/**
+ * A wire that asserts something about §35 — and therefore a proposal, never a fact.
+ *
+ * Separate from createNodeLink because the two are different acts. That one draws the
+ * containment wire a new card keeps to its parent, which claims nothing about
+ * architecture; this one says "data flows from here to there", which is canon's to say,
+ * so it opens a ruling and waits for Shawn.
+ *
+ * Both rows are written by one RPC rather than two calls from here. The narrowed endpoint
+ * trigger (0010) requires the ruling to exist BEFORE a canonical-to-canonical link row,
+ * and a caller that got that order wrong would either be refused outright or leave a queue
+ * entry for a wire nobody can see. `propose_connection` owns that ordering so no caller
+ * has to know it.
+ */
+export async function proposeConnection(
+  client: SupabaseClient,
+  input: { fromNodeKey: string; toNodeKey: string; relation: ConnectionRelation; label: string; createdBy?: string | null },
+): Promise<{ rulingId: string; linkId: string | null; existing: boolean }> {
+  const { data, error } = await client.rpc("propose_connection", {
+    p_from: input.fromNodeKey,
+    p_to: input.toNodeKey,
+    p_relation: input.relation,
+    p_label: input.label,
+    p_created_by: input.createdBy ?? null,
+  });
+  if (error) throw new Error(`proposeConnection: ${error.message}`);
+  const row = data as { ruling_id: string; link_id: string | null; existing: boolean };
+  return { rulingId: row.ruling_id, linkId: row.link_id, existing: row.existing };
+}
+
+/**
+ * Removes a wire. No trigger to satisfy on delete (the PM-endpoint rule only gates
+ * insert/update) — a plain delete by id, plus the open ruling that wire was proposing.
+ *
+ * The ruling goes with it for the same reason deletePmNode withdraws a card's: Shawn rules
+ * one at a time, so a queue entry for a wire that is no longer drawn costs him a real turn.
+ * Resolved rulings stay — they are the record of what was proposed and what became of it.
+ */
 export async function deleteNodeLink(client: SupabaseClient, id: string): Promise<void> {
+  const { error: rulingError } = await client.from("pm_rulings").delete().eq("link_id", id).eq("status", "pending");
+  if (rulingError) throw new Error(`deleteNodeLink: clearing pm_rulings failed: ${rulingError.message}`);
+
   const { error } = await client.from("pm_node_links").delete().eq("id", id);
   if (error) throw new Error(`deleteNodeLink: ${error.message}`);
 }
@@ -465,7 +505,7 @@ export async function updateNodeLink(
   if (patch.citation !== undefined) body.citation = patch.citation;
   const { data, error } = await client.from("pm_node_links").update(body).eq("id", id).select().single();
   const row = unwrap({ data, error }, "updateNodeLink");
-  return { id: row.id, fromNodeKey: row.from_node_key, toNodeKey: row.to_node_key, citation: row.citation, createdBy: row.created_by, createdAt: row.created_at };
+  return { id: row.id, fromNodeKey: row.from_node_key, toNodeKey: row.to_node_key, relation: row.relation ?? null, citation: row.citation, createdBy: row.created_by, createdAt: row.created_at };
 }
 
 /**

@@ -185,6 +185,9 @@ export function buildModel(
   // second write to keep in step.
   const pending = pm.rulings.filter((r) => r.status === "pending");
   for (const ruling of pending) {
+    // A link ruling marks a wire, not a card — see the links loop below. Only a node
+    // ruling has a card to mark.
+    if (ruling.kind !== "node" || !ruling.nodeKey) continue;
     const target = nodes[ruling.nodeKey];
     if (!target) continue;
     target.awaitingRuling = true;
@@ -233,11 +236,31 @@ export function buildModel(
   const links: Link[] = [];
   for (const c of connections) {
     if (!nodes[c.fromNodeKey] || !nodes[c.toNodeKey]) continue;
-    links.push({ canon: true, a: c.fromNodeKey, b: c.toNodeKey, why: c.declaringCitation, back: c.backward });
+    links.push({
+      canon: true,
+      a: c.fromNodeKey,
+      b: c.toNodeKey,
+      why: c.declaringCitation,
+      back: c.backward,
+      evidence: c.evidenceClass,
+    });
   }
+
+  // A pending wire is a proposal and must not read as canon, so it carries its ruling ref
+  // out to the field the same way a pending card does.
+  const rulingByLink = new Map(pending.filter((r) => r.kind === "link" && r.linkId).map((r) => [r.linkId as string, r]));
   for (const l of pm.links) {
     if (!nodes[l.fromNodeKey] || !nodes[l.toNodeKey]) continue;
-    links.push({ id: l.id, a: l.fromNodeKey, b: l.toNodeKey, why: l.citation ?? undefined });
+    const ruling = rulingByLink.get(l.id);
+    links.push({
+      id: l.id,
+      a: l.fromNodeKey,
+      b: l.toNodeKey,
+      why: l.citation ?? undefined,
+      relation: l.relation ?? undefined,
+      awaitingRuling: Boolean(ruling),
+      rulingRef: ruling?.rulingRef,
+    });
   }
 
   // A PM node's parent_node_key is nesting, not a wire — createPmNode never requires a

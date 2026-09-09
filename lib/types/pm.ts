@@ -115,11 +115,22 @@ export interface PmLayoutPosition {
   updatedAt: string;
 }
 
-/** A connection where at least one endpoint is a PM-created node — enforced by a DB trigger, not just this type. */
+/** Which of §35's four connection fields a drawn wire is proposing. Same vocabulary connections.ts reads canon in, so a proposal needs no translation to be ruled on. */
+export type ConnectionRelation = "downstream" | "reads" | "emits" | "trigger";
+
+/**
+ * A connection drawn on the map.
+ *
+ * Canonical-to-canonical is permitted only while an open link ruling covers it — enforced
+ * by a DB trigger (0010), not just this type. `relation` null means the wire is not a §35
+ * assertion at all: it is the containment wire a card keeps to the parent it was created
+ * under, which is drawing rather than architecture, and opens no ruling.
+ */
 export interface PmNodeLink {
   id: string;
   fromNodeKey: string;
   toNodeKey: string;
+  relation: ConnectionRelation | null;
   citation: string | null;
   createdBy: string | null;
   createdAt: string;
@@ -142,6 +153,15 @@ export interface PmNodeState {
 }
 
 export type RulingStatus = "pending" | "ruled" | "rejected";
+
+/**
+ * `node` — a card someone drew (0009). `link` — a wire someone drew (0010).
+ *
+ * One table and one queue deliberately: a ruling is one thing, a proposal awaiting Shawn,
+ * and he works the list one at a time. Two tables would mean two queues, two readers and a
+ * UI that merges them back anyway.
+ */
+export type RulingKind = "node" | "link";
 
 /**
  * What a card is proposing about its own connections, in COYOTE's own §35 vocabulary —
@@ -168,11 +188,23 @@ export interface ConnectionIntent {
 export interface PmRuling {
   id: string;
   rulingRef: string;
-  nodeKey: string;
+  kind: RulingKind;
+  /** The pm_nodes row this ruling is about. Null for a link ruling, which is about an edge. */
+  nodeKey: string | null;
   label: string;
   parentNodeKey: string | null;
   status: RulingStatus;
   intent: ConnectionIntent;
+  /** Link rulings only — the edge being proposed, in canonical/PM node keys. */
+  fromNodeKey: string | null;
+  toNodeKey: string | null;
+  relation: ConnectionRelation | null;
+  /**
+   * The `pm_node_links` row this ruling proposes. Nullable because the ruling outlives the
+   * wire: retiring deletes the row and leaves the ruling as the record that canon
+   * absorbed it.
+   */
+  linkId: string | null;
   submittedBy: string | null;
   submittedAt: string;
   resolvedAt: string | null;

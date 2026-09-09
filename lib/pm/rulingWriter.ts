@@ -67,6 +67,40 @@ export async function updateRulingIntent(client: SupabaseClient, nodeKey: string
  * wants it gone. Nothing is deleted here; a rejection that quietly destroyed a card's
  * to-dos and files would make the queue something people route around.
  */
+export async function rejectRulingById(client: SupabaseClient, rulingId: string, note?: string | null): Promise<PmRuling> {
+  const { data, error } = await client
+    .from("pm_rulings")
+    .update({ status: "rejected", resolved_at: new Date().toISOString(), resolved_note: note ?? null })
+    .eq("id", rulingId)
+    .eq("status", "pending")
+    .select()
+    .single();
+  const ruling = rulingRow(unwrap({ data, error }, "rejectRulingById"));
+
+  // A rejected CARD keeps everything it has and simply reads OUT OF SCOPE — see
+  // rejectRuling below. A rejected WIRE is removed, because the two are not alike: a card
+  // holds to-dos, files and screenshots that are real work regardless of canon, while a
+  // wire holds nothing but the assertion Shawn just declined. Leaving it drawn would keep
+  // claiming on the map exactly what he said no to.
+  if (ruling.kind === "link" && ruling.linkId) {
+    const { error: linkError } = await client.from("pm_node_links").delete().eq("id", ruling.linkId);
+    if (linkError) throw new Error(`rejectRulingById: removing the wire failed: ${linkError.message}`);
+  }
+
+  return ruling;
+}
+
+/**
+ * Canon carries this edge now, so the wire proposing it goes. Called only from the sync
+ * job, only after a publish, and only for rulings whose endpoints matched exactly — see
+ * findCanonicalizedLinkRulings for why an edge retires automatically where a card waits
+ * for a confirming tap.
+ */
+export async function retireLinkRuling(client: SupabaseClient, rulingId: string, note?: string | null): Promise<void> {
+  const { error } = await client.rpc("retire_link_ruling", { p_ruling_id: rulingId, p_note: note ?? null });
+  if (error) throw new Error(`retireLinkRuling: ${error.message}`);
+}
+
 export async function rejectRuling(client: SupabaseClient, nodeKey: string, note?: string | null): Promise<PmRuling> {
   const { data, error } = await client
     .from("pm_rulings")
