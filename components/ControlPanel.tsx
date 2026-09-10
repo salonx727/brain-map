@@ -70,7 +70,7 @@ export default function ControlPanel({
   onOpenCard: (id: string, tab: number | null) => void;
   onShowOnField: (id: string) => void;
 }) {
-  const { model, bump, persist, addFiles, addNode, removeNode, attachExistingAsSub, canEditNode } = useBrain();
+  const { model, bump, persist, addFiles, addNode, removeNode, canEditNode } = useBrain();
   const intake = useIntake();
 
   /**
@@ -119,13 +119,6 @@ export default function ControlPanel({
     (oid) => hasLink(model.links, d.id, oid),
     true,
   );
-
-  /**
-   * Same roster as wireOptions, narrowed to PM-created cards only — a canonical card has
-   * no pm_nodes row for parent_node_key to live on (attachExistingAsSub is a no-op for
-   * one), so offering it here would be a pickable option that silently does nothing.
-   */
-  const subAttachOptions = wireOptions.filter((o) => model.nodes[o.id]?.origin === "user");
 
   function applyWire(targetId: string) {
     if (retargetId) {
@@ -388,17 +381,6 @@ export default function ControlPanel({
                 bump();
               });
             }}
-          />
-
-          {/* "Add a sub-node" above only ever types a brand-new card. This is the other
-              half: nest a card that already exists, instead of making a duplicate. */}
-          <div className="lab" style={{ marginTop: 18 }}>
-            ATTACH AN EXISTING CARD AS A SUB
-          </div>
-          <WirePicker
-            options={subAttachOptions}
-            onPick={(targetId) => attachExistingAsSub(targetId, d.id)}
-            placeholder="Search cards to nest under this one…"
           />
         </>
       ) : null}
