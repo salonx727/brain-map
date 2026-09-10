@@ -135,6 +135,13 @@ describe("connectionSummary", () => {
   it("reads as the edge, in canon's own casing", () => {
     expect(connectionSummary("E10 — Tag", "downstream", "E04 — Signal")).toBe("E10 TAG → DOWNSTREAM → E04 SIGNAL");
   });
+
+  it("phrases READS in plain English, target-reads-source, never an arrow from source to target", () => {
+    // Stored/drawn source -> target is E10 -> E04, but READS means E04 reads E10's data
+    // (see coyoteText.ts's header) — "E10 TAG → READS → E04 SIGNAL" would tell a reader
+    // the opposite of who reads whom.
+    expect(connectionSummary("E10 — Tag", "reads", "E04 — Signal")).toBe("E04 SIGNAL reads E10 TAG's data");
+  });
 });
 
 describe("findCanonicalizedLinkRulings", () => {

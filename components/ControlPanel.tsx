@@ -158,8 +158,10 @@ export default function ControlPanel({
     model.links.push(link);
     bump();
 
-    const fromLabel = `${model.nodes[from]?.ref ?? ""} ${model.nodes[from]?.name ?? ""}`.trim();
-    const toLabel = `${model.nodes[to]?.ref ?? ""} ${model.nodes[to]?.name ?? ""}`.trim();
+    // Same fallback as RulingList.tsx's labelOf: a blank ref+name must never produce a
+    // blank name in the stored ruling text.
+    const fromLabel = `${model.nodes[from]?.ref ?? ""} ${model.nodes[from]?.name ?? ""}`.trim() || "UNNAMED CARD";
+    const toLabel = `${model.nodes[to]?.ref ?? ""} ${model.nodes[to]?.name ?? ""}`.trim() || "UNNAMED CARD";
 
     persist(
       async () => {

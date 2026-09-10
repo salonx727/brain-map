@@ -90,9 +90,19 @@ export function coyoteBlockForNode(ruling: PmRuling): string {
   return lines.join("\n");
 }
 
-/** One line naming what a link ruling proposes, for the queue itself. */
+/**
+ * One line naming what a link ruling proposes, for the queue itself.
+ *
+ * `reads` is phrased as plain English rather than an arrow: the edge is stored and drawn
+ * source → target, but READS means the TARGET reads the SOURCE's data (see this file's
+ * header) — an arrow reading "A → READS → B" would tell Shawn the opposite of who reads
+ * whom. `downstream`/`emits`/`trigger` all point the way they read, so the arrow stays.
+ */
 export function connectionSummary(fromLabel: string, relation: ConnectionRelation, toLabel: string): string {
-  return `${canonName(fromLabel)} → ${FIELD_LABEL[relation]} → ${canonName(toLabel)}`;
+  const from = canonName(fromLabel);
+  const to = canonName(toLabel);
+  if (relation === "reads") return `${to} reads ${from}'s data`;
+  return `${from} → ${FIELD_LABEL[relation]} → ${to}`;
 }
 
 export { FIELD_LABEL, canonName };

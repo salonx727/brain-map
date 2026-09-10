@@ -142,7 +142,11 @@ export default function RulingList({ onOpenCard }: { onOpenCard: (id: string) =>
   function labelOf(key: string | null): string {
     if (!key) return "?";
     const node = model.nodes[key];
-    return node ? `${node.ref} ${node.name}`.trim() : key;
+    if (!node) return key;
+    // A blank ref+name must never render as a blank line in a ruling — that leaves
+    // "§35 — " with nothing after the dash, unusable text to hand Shawn. Fall back to
+    // something that names the gap instead of hiding it.
+    return `${node.ref} ${node.name}`.trim() || "UNNAMED CARD";
   }
 
   return (
