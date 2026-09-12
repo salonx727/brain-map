@@ -304,6 +304,15 @@ body {
   gap: 6px;
   margin-top: 10px;
 }
+/* A circle's safe width shrinks the further a row sits from vertical centre — a plain
+   flex-wrap fills the padding box edge-to-edge as if it were a rectangle, so the widest
+   row (3 chips) reached past the circle's own curve even though it fit the box. Narrower
+   and centred instead of wider overall — Shawn, 2026-09-12: "you did not have to size
+   them up... balance the sub cards that are inside the edges." */
+.node.circle .ctls {
+  max-width: 112px;
+  justify-content: center;
+}
 .ctl {
   display: flex;
   align-items: center;
@@ -345,13 +354,11 @@ body {
   padding-bottom: 14px;
 }
 .node.circle.hasctl {
-  /* BOOKING and THE GATE's control chips (5, wrapped 3+2) measured wider than the square
-     inscribed in a 190px circle — the bottom row cleared the padding box but crossed the
-     circle's own drawn border. Shawn, 2026-09-12: "content should be balanced, not
-     hitting the edge of the card." Sized up rather than shrinking the chips, which are
-     the same size as every other card's. */
-  height: 230px;
-  width: 230px;
+  /* Card size stays what it was — Shawn, 2026-09-12: "you did not have to size them up...
+     you were doing the sub cards in vertical and horizontal rows as if you were inside a
+     card." Fixed at the chip layout instead: see .node.circle .ctls. */
+  height: 190px;
+  width: 190px;
 }
 
 /* a touch target, not a card — no fill, no edge */
