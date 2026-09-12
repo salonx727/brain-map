@@ -114,9 +114,13 @@ export default function NodeCard({
       <div className="n-name">{d.name || "UNNAMED"}</div>
       {/* Two facts, side by side, because they are genuinely independent: how the build is
           going, and whether canon has accepted the card at all. A card can be IN BUILD and
-          still be waiting on Shawn. */}
+          still be waiting on Shawn.
+          UNTOUCHED and BLOCKED are never printed as text (Shawn, 2026-09-12) — UNTOUCHED
+          is the default for nearly every card and says nothing; BLOCKED is already the
+          solid mark below, and a faint duplicate of it in text added nothing a second
+          glance couldn't already tell from the mark. */}
       <div className="n-meta mono">
-        {d.state || "UNTOUCHED"}
+        {d.state !== "UNTOUCHED" && d.state !== "BLOCKED" ? d.state : null}
         {d.awaitingRuling ? <span className="ruling">{d.rulingRef ?? "RULING"}</span> : null}
       </div>
       <div className="marks">

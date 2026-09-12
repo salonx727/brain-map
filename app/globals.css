@@ -124,7 +124,9 @@ body {
 }
 .n-name {
   font-size: 13px;
-  color: var(--text-2);
+  /* Bright white, not the dim --text-2 — Shawn, 2026-09-12: "all engine names need to
+     be in a bright white font." */
+  color: var(--text);
   margin-top: 5px;
   /* A long single word (AFTERBURNER, GHOST NOTES at #plane.far's larger font) wraps
      instead of overflowing the card's fixed width — the card's own height is auto
@@ -343,8 +345,13 @@ body {
   padding-bottom: 14px;
 }
 .node.circle.hasctl {
-  height: 190px;
-  width: 190px;
+  /* BOOKING and THE GATE's control chips (5, wrapped 3+2) measured wider than the square
+     inscribed in a 190px circle — the bottom row cleared the padding box but crossed the
+     circle's own drawn border. Shawn, 2026-09-12: "content should be balanced, not
+     hitting the edge of the card." Sized up rather than shrinking the chips, which are
+     the same size as every other card's. */
+  height: 230px;
+  width: 230px;
 }
 
 /* a touch target, not a card — no fill, no edge */
