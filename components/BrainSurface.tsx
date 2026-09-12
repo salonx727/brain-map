@@ -131,7 +131,12 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
     const b = bounds();
     const w = b.x2 - b.x1;
     const h = b.y2 - b.y1;
-    const k = clampK(Math.min((vp.clientWidth - 100) / w, (vp.clientHeight - 170) / h));
+    // FIT is "shrink to see everything," never "blow small boards up to fill the
+    // screen" — Shawn, 2026-09-12, after decluttering left few enough cards that this
+    // computed k approached clampK's 2.5 ceiling and every card rendered oversized.
+    // clampK's ceiling stays 2.5 for a deliberate pinch/wheel zoom-in; this is FIT's own,
+    // lower one.
+    const k = Math.min(1, clampK(Math.min((vp.clientWidth - 100) / w, (vp.clientHeight - 170) / h)));
     view.current = {
       k,
       x: (vp.clientWidth - w * k) / 2 - b.x1 * k,
