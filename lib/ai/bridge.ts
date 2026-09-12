@@ -74,16 +74,30 @@ export async function createThread(client: SupabaseClient): Promise<AiThread> {
  * fact about the brain, not about the tab it was typed in. It is also why there is no
  * localStorage here: this app took every piece of real state out of localStorage
  * deliberately, and a pointer to a conversation is real state.
+ *
+ * Retried once: confirmed live 2026-09-11, this is the query that runs the instant the
+ * panel mounts, and a transient Supabase gateway timeout on that very first request
+ * crashed the whole panel with a raw, Next.js-redacted error — one bad round trip made
+ * the hub look broken rather than momentarily slow. A plain `select ... limit 1` has no
+ * side effect to duplicate, so retrying it blindly is safe in a way `queueUserMessage`'s
+ * insert is not.
  */
 export async function latestOrNewThread(client: SupabaseClient): Promise<AiThread> {
-  const { data, error } = await client
-    .from("ai_threads")
-    .select("*")
-    .order("updated_at", { ascending: false })
-    .limit(1);
-  if (error) throw new Error(`latestOrNewThread: ${error.message}`);
-  if (data?.length) return threadFromRow(data[0]);
-  return createThread(client);
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 800));
+    const { data, error } = await client
+      .from("ai_threads")
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (!error) {
+      if (data?.length) return threadFromRow(data[0]);
+      return createThread(client);
+    }
+    lastError = error.message;
+  }
+  throw new Error(`latestOrNewThread: ${lastError}`);
 }
 
 /**
