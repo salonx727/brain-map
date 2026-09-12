@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrainProvider, resetTally, useBrain } from "@/lib/brain";
+import { BrainProvider, useBrain } from "@/lib/brain";
 import { IntakeProvider } from "@/lib/intake";
 import { upsertLayoutPositionAction } from "@/app/actions/pm";
 import { SIZE } from "@/lib/seed";
-import { collides, linksOf, otherEnd } from "@/lib/graph";
+import { balanceLayout, collides, linksOf, otherEnd, realignGrid } from "@/lib/graph";
 import type { Model } from "@/lib/types";
 import type { ReconcileCandidate } from "@/lib/pm/rulingReader";
 import ControlPanel from "./ControlPanel";
@@ -57,8 +57,12 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
   const [readoutHidden, setReadoutHidden] = useState(false);
   const [resetNonce, setResetNonce] = useState(0);
 
-  const [resetArmed, setResetArmed] = useState(false);
-  const resetTimer = useRef<number | null>(null);
+  const [screenMenuOpen, setScreenMenuOpen] = useState(false);
+  /* Captured once, from the server-resolved arrangement this page loaded with — "the
+     layout before anything was moved" (Shawn, 2026-09-12), not a fixed default. A second
+     RESET later this same session still goes back to page-load, not to whatever the
+     first RESET produced. */
+  const originalPositions = useRef<Record<string, { x: number; y: number }> | null>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const planeRef = useRef<HTMLDivElement>(null);
@@ -194,6 +198,46 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
     return out;
   }, [model]);
 
+  useEffect(() => {
+    if (!originalPositions.current) originalPositions.current = snapshot();
+  }, [snapshot]);
+
+  /**
+   * Applies a computed x/y map to the live model and writes each changed position
+   * through the same action a drag does — SCREEN's three options are "arrange," not a
+   * separate save path.
+   */
+  const applyPositions = useCallback(
+    (next: Record<string, { x: number; y: number }>) => {
+      for (const id of model.order) {
+        const p = next[id];
+        const n = model.nodes[id];
+        if (!p || !n || (n.x === p.x && n.y === p.y)) continue;
+        n.x = p.x;
+        n.y = p.y;
+        if (layoutId) persist(() => upsertLayoutPositionAction({ layoutId, nodeKey: id, x: p.x, y: p.y }));
+      }
+      bump();
+      window.requestAnimationFrame(fit);
+    },
+    [model, layoutId, persist, bump],
+  );
+
+  const doReset = useCallback(() => {
+    setScreenMenuOpen(false);
+    if (originalPositions.current) applyPositions(originalPositions.current);
+  }, [applyPositions]);
+
+  const doBalance = useCallback(() => {
+    setScreenMenuOpen(false);
+    applyPositions(balanceLayout(model.nodes, model.order));
+  }, [applyPositions, model]);
+
+  const doRealign = useCallback(() => {
+    setScreenMenuOpen(false);
+    applyPositions(realignGrid(model.order));
+  }, [applyPositions, model]);
+
   const lockGuard = useRef(0);
   const toggleLock = useCallback(() => {
     const now = Date.now();
@@ -247,16 +291,11 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
       dismiss();
       setRoster(null);
       exitWire();
+      setScreenMenuOpen(false);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [dismiss, exitWire]);
-
-  useEffect(() => {
-    return () => {
-      if (resetTimer.current) window.clearTimeout(resetTimer.current);
-    };
-  }, []);
 
   /* ---------------- field gestures ---------------- */
 
@@ -459,17 +498,6 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
     done(ok);
   };
 
-  const armReset = () => {
-    if (!resetArmed) {
-      setResetArmed(true);
-      resetTimer.current = window.setTimeout(() => setResetArmed(false), 6000);
-      return;
-    }
-    if (resetTimer.current) window.clearTimeout(resetTimer.current);
-    brain.reset();
-  };
-
-  const tally = resetTally(model);
   const readoutFocus = focus3 || wireFocus;
   const wireOpen = wireMode && (!readoutHidden || !!readoutFocus);
 
@@ -698,15 +726,24 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
           WIRE
         </button>
         <span className="sep" />
-        <button className={"act" + (resetArmed ? " armed" : "")} onClick={armReset}>
-          {resetArmed
-            ? "TAP AGAIN · DISCARDS " +
-              tally.placed +
-              " PLACED CARDS AND " +
-              tally.items +
-              " ITEMS"
-            : "RESET"}
-        </button>
+        <div style={{ position: "relative" }}>
+          {screenMenuOpen ? (
+            <div className="screen-menu">
+              <button className="act" onClick={doReset}>
+                RESET · BACK TO HOW THIS LOADED
+              </button>
+              <button className="act" onClick={doBalance}>
+                BALANCE · TIDY WHERE THEY ARE
+              </button>
+              <button className="act" onClick={doRealign}>
+                REALIGN · CLEAN GRID
+              </button>
+            </div>
+          ) : null}
+          <button className={"act" + (screenMenuOpen ? " armed" : "")} onClick={() => setScreenMenuOpen((was) => !was)}>
+            SCREEN
+          </button>
+        </div>
         <button
           className="act"
           onClick={() => {

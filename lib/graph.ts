@@ -97,6 +97,92 @@ export function freeSpot(
   return { x: p.x, y: y2 };
 }
 
+/**
+ * REALIGN — every card into a clean grid, same column/row spacing freeSpot already uses
+ * (410 across, 172 down) so a realigned board reads no differently from one arranged by
+ * hand one freeSpot placement at a time. Column count is fixed at 3 to match the shape
+ * every hand-built layout in this app has used so far (see seed.ts) — not derived from
+ * card count, so a 4-card board and a 40-card board both read as the same kind of grid.
+ */
+export function realignGrid(order: string[]): Record<string, { x: number; y: number }> {
+  const COLS = 3;
+  const out: Record<string, { x: number; y: number }> = {};
+  order.forEach((id, i) => {
+    out[id] = { x: (i % COLS) * 410, y: Math.floor(i / COLS) * 172 };
+  });
+  return out;
+}
+
+/**
+ * A real "are these two cards actually touching" test — a small fixed gap, not
+ * `collides`'s 150px/60px margin. That margin exists to keep a freshly-added card from
+ * crowding an existing one and is intentionally generous for that; reused here it flags
+ * cards a full freeSpot/realignGrid step apart (172px vertically) as "colliding," which
+ * would make BALANCE rewrite a layout that was never actually overlapping.
+ */
+function boxesOverlap(nodes: Nodes, order: string[], x: number, y: number, shape: Shape): boolean {
+  const GAP = 8;
+  const sz = SIZE[shape];
+  return order.some((oid) => {
+    const o = nodes[oid];
+    if (!o) return false;
+    const os = SIZE[o.shape];
+    return !(
+      x + sz[0] + GAP < o.x ||
+      x > o.x + os[0] + GAP ||
+      y + sz[1] + GAP < o.y ||
+      y > o.y + os[1] + GAP
+    );
+  });
+}
+
+/**
+ * BALANCE — keeps every card where it was dragged to; only resolves genuine overlaps.
+ * Earlier cards in draw order are never moved by a later one (each card is only ever
+ * checked against positions already finalized this pass), so re-running BALANCE on an
+ * already-clear board is a no-op rather than a slow drift.
+ */
+export function balanceLayout(nodes: Nodes, order: string[]): Record<string, { x: number; y: number }> {
+  const out: Record<string, { x: number; y: number }> = {};
+  const settledOrder: string[] = [];
+  const settledNodes: Nodes = {};
+
+  for (const id of order) {
+    const n = nodes[id];
+    if (!n) continue;
+    let { x, y } = n;
+
+    if (boxesOverlap(settledNodes, settledOrder, x, y, n.shape)) {
+      // Same ring-search freeSpot uses, centred on the card's own current position
+      // rather than a parent's — this is "clear a spot right here," not "find a spot
+      // beside something else."
+      const tries: [number, number][] = [
+        [410, 0], [-410, 0], [0, 172], [0, -172],
+        [410, 172], [-410, 172], [410, -172], [-410, -172],
+      ];
+      let placed = false;
+      for (const [dx, dy] of tries) {
+        if (!boxesOverlap(settledNodes, settledOrder, x + dx, y + dy, n.shape)) {
+          x += dx;
+          y += dy;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        let ring = 2;
+        while (boxesOverlap(settledNodes, settledOrder, x, y + ring * 172, n.shape)) ring++;
+        y += ring * 172;
+      }
+    }
+
+    out[id] = { x, y };
+    settledNodes[id] = { ...n, x, y };
+    settledOrder.push(id);
+  }
+  return out;
+}
+
 export function sizeOf(n: number): string {
   if (n < 1024) return n + " B";
   if (n < 1048576) return (n / 1024).toFixed(0) + " KB";
