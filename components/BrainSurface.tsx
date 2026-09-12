@@ -107,7 +107,7 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
     if (zoomRef.current) zoomRef.current.value = String(v.k);
   }, []);
 
-  const bounds = useCallback(() => {
+  const nodeBounds = useCallback(() => {
     let x1 = Infinity;
     let y1 = Infinity;
     let x2 = -Infinity;
@@ -125,6 +125,36 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
     return { x1, y1, x2, y2 };
   }, [model]);
 
+  /**
+   * Centred under whatever the current arrangement's node bounds are, sitting just below
+   * the lowest card — never a fixed model-space point. Shawn, 2026-09-12: after REALIGN
+   * reflowed the board, the door's old hardcoded {left:-112, top:1390} no longer landed
+   * anywhere near "under everything," because it was never connected to the arrangement
+   * to begin with.
+   */
+  const doorRect = useCallback(
+    (nb: { x1: number; x2: number; y2: number }) => {
+      const w = 196;
+      const h = 84;
+      const gap = 40;
+      const left = (nb.x1 + nb.x2) / 2 - w / 2;
+      const top = nb.y2 + gap;
+      return { left, top, x1: left, x2: left + w, y2: top + h };
+    },
+    [],
+  );
+
+  const bounds = useCallback(() => {
+    const nb = nodeBounds();
+    const door = doorRect(nb);
+    return {
+      x1: Math.min(nb.x1, door.x1),
+      y1: nb.y1,
+      x2: Math.max(nb.x2, door.x2),
+      y2: door.y2,
+    };
+  }, [nodeBounds, doorRect]);
+
   const fit = useCallback(() => {
     const vp = viewportRef.current;
     if (!vp) return;
@@ -137,10 +167,16 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
     // clampK's ceiling stays 2.5 for a deliberate pinch/wheel zoom-in; this is FIT's own,
     // lower one.
     const k = Math.min(1, clampK(Math.min((vp.clientWidth - 100) / w, (vp.clientHeight - 170) / h)));
+    // Vertical balance is against the space above #bar, not the full viewport — Shawn,
+    // 2026-09-12: "everything designed above the toolbar vertical balance." #bar sits
+    // 22px off the bottom edge and is itself roughly 46px tall; centering against the
+    // full height instead would read as "pushed down," not balanced, once the toolbar's
+    // own footprint is accounted for.
+    const TOOLBAR_SPACE = 90;
     view.current = {
       k,
       x: (vp.clientWidth - w * k) / 2 - b.x1 * k,
-      y: Math.max(46, (vp.clientHeight - h * k) / 2 - b.y1 * k - 16),
+      y: Math.max(46, (vp.clientHeight - TOOLBAR_SPACE - h * k) / 2 - b.y1 * k - 16),
     };
     apply();
   }, [apply, bounds]);
@@ -507,6 +543,7 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
   const wireOpen = wireMode && (!readoutHidden || !!readoutFocus);
 
   const openNode = openId ? model.nodes[openId] ?? null : null;
+  const doorPos = doorRect(nodeBounds());
 
   return (
     <IntakeProvider openId={openId} onUnrouted={() => setRoster({ kind: "hub", tab: 0 })}>
@@ -646,7 +683,7 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
           {/* one door. AI and intake live behind it. */}
           <div
             className="door"
-            style={{ left: -112, top: 1390 }}
+            style={{ left: doorPos.left, top: doorPos.top }}
             onClick={(e) => {
               e.stopPropagation();
               if (!suppress.current) setRoster({ kind: "hub", tab: 0 });
