@@ -219,9 +219,35 @@ export default function ControlPanel({
           <div className="title">{d.name || d.ref}</div>
           {tally ? <div className="o-count">{tally}</div> : null}
         </div>
-        <button className="dismiss" aria-label="Dismiss" onClick={onDismiss}>
-          <span />
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {/* Canonical cards have no delete path — same gate as REMOVE THIS CARD below.
+              Shares its armed state: arming one arms both, so the two controls never
+              disagree about whether the next tap deletes. */}
+          {editable ? (
+            <button
+              className={"delete-x" + (delArmed ? " armed" : "")}
+              aria-label={delArmed ? `Tap again to permanently remove ${totalItems(d)} items and ${mine.length} wires` : "Delete this card"}
+              title={delArmed ? `Tap again to permanently remove ${totalItems(d)} items and ${mine.length} wires` : "Delete this card"}
+              onClick={() => {
+                if (!delArmed) {
+                  setDelArmed(true);
+                  delTimer.current = window.setTimeout(() => setDelArmed(false), 5000);
+                  return;
+                }
+                if (delTimer.current) window.clearTimeout(delTimer.current);
+                setDelArmed(false);
+                removeNode(d.id, false);
+                onDismiss();
+              }}
+            >
+              <span />
+              <span />
+            </button>
+          ) : null}
+          <button className="dismiss" aria-label="Dismiss" onClick={onDismiss}>
+            <span />
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: editable ? 22 : 8 }}>

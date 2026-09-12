@@ -699,6 +699,45 @@ body.wire3d #declare {
   background: var(--text);
 }
 
+/* Delete gets its own shape, deliberately not a minus — the comment above exists exactly
+   so dismiss and delete are never mistaken for one another again (Shawn, 2026-09-12: "I
+   have a minus to minimize... but I need an X to delete it"). Same tap-to-arm confirm as
+   REMOVE THIS CARD lower in the panel; this is a second, more visible way to reach it. */
+.delete-x {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--stroke);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  position: relative;
+}
+.delete-x:hover {
+  border-color: var(--baton);
+}
+.delete-x span {
+  display: block;
+  width: 13px;
+  height: 1.4px;
+  background: var(--text);
+  position: absolute;
+  transform: rotate(45deg);
+}
+.delete-x span + span {
+  transform: rotate(-45deg);
+}
+.delete-x.armed {
+  border-color: var(--baton);
+  background: var(--baton);
+}
+.delete-x.armed span {
+  background: var(--ground);
+}
+
 .lab {
   display: block;
   font-family: var(--font-space-mono), monospace;
