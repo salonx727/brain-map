@@ -85,6 +85,12 @@ body {
 .node.box {
   width: 190px;
   height: 116px;
+  /* Width is fixed and height is auto (.node.hasctl below), so a wrapped title can only
+     ever grow the card downward, never get cut off — safe to clip here as the hard
+     backstop behind .n-name's overflow-wrap. Not applied to .circle/.pill: those keep a
+     fixed height even with .hasctl, where clipping could hide real text instead of just
+     preventing overflow. */
+  overflow: hidden;
 }
 .node.circle {
   width: 168px;
@@ -120,6 +126,12 @@ body {
   font-size: 13px;
   color: var(--text-2);
   margin-top: 5px;
+  /* A long single word (AFTERBURNER, GHOST NOTES at #plane.far's larger font) wraps
+     instead of overflowing the card's fixed width — the card's own height is auto
+     (.node.hasctl), so wrapping grows it downward rather than spilling sideways. */
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .node.circle .n-name,
 .node.pill .n-name {
@@ -1038,6 +1050,12 @@ button.act.armed {
   gap: 14px;
   padding: 17px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.listrow.askable {
+  cursor: pointer;
+}
+.listrow.askable .lbody {
+  cursor: pointer;
 }
 .listrow .lbody {
   flex: 1;
