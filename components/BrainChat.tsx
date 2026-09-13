@@ -39,6 +39,11 @@ export default function BrainChat() {
       const state = await readBrainThreadAction(id);
       setMessages(state.messages);
       setStalled(state.stalled);
+      // A prior poll's error (e.g. a transient Supabase gateway timeout, retried once
+      // already inside readThread) must not outlive its cause — confirmed live 2026-09-13
+      // (Codeman): nothing here cleared it, so a single bad round trip mid-conversation
+      // left a stale error on screen forever even once polling recovered on its own.
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

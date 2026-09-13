@@ -127,14 +127,25 @@ export async function queueUserMessage(
 }
 
 /** The whole conversation, oldest first — transcript and queue state in one read. */
+/**
+ * Retried once for the same reason latestOrNewThread is: a transient Supabase gateway
+ * timeout. This one is called every POLL_MS while the panel is open — confirmed live
+ * 2026-09-13 (Codeman), same "Gateway Timeout" surfacing as a raw, Next.js-redacted error
+ * mid-conversation, not just on first open. Read-only, no side effect to duplicate.
+ */
 export async function readThread(client: SupabaseClient, threadId: string): Promise<AiMessage[]> {
-  const { data, error } = await client
-    .from("ai_messages")
-    .select("*")
-    .eq("thread_id", threadId)
-    .order("created_at", { ascending: true });
-  if (error) throw new Error(`readThread: ${error.message}`);
-  return (data ?? []).map(messageFromRow);
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 800));
+    const { data, error } = await client
+      .from("ai_messages")
+      .select("*")
+      .eq("thread_id", threadId)
+      .order("created_at", { ascending: true });
+    if (!error) return (data ?? []).map(messageFromRow);
+    lastError = error.message;
+  }
+  throw new Error(`readThread: ${lastError}`);
 }
 
 /**
