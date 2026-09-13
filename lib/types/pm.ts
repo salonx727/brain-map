@@ -213,6 +213,16 @@ export interface PmRuling {
   ruledIntoNodeKey: string | null;
 }
 
+/** One reassignment of a pm_items row — see pm_item_assignments (0011). Append-only; never the source of truth for current ownership (PmItem.ownerId is). */
+export interface PmItemAssignment {
+  id: string;
+  itemId: string;
+  fromOwnerId: string | null;
+  toOwnerId: string | null;
+  changedBy: string | null;
+  changedAt: string;
+}
+
 /** Everything the PM layer knows about a set of node keys, in one batch. Never flattened with canonical data — see getPmLayer.ts. */
 export interface PmLayer {
   nodes: PmNode[];
@@ -223,4 +233,6 @@ export interface PmLayer {
   links: PmNodeLink[];
   states: PmNodeState[];
   rulings: PmRuling[];
+  /** The whole directory (Shawn, Codeman) — small enough to always load in full, never scoped by node key like everything else above. */
+  people: PmPerson[];
 }

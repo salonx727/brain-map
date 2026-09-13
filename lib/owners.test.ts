@@ -9,7 +9,7 @@ import { buildFullDiagnostics } from "@/lib/coyote/diagnostics";
 import type { AttributedItem, Diagnostic } from "@/lib/types/canonicalNode";
 import type { PmLayer, PmLayoutPosition } from "@/lib/types/pm";
 
-const EMPTY_PM: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [] };
+const EMPTY_PM: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [], people: [] };
 
 function looseBlocker(text: string): Diagnostic {
   return {

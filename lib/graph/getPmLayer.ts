@@ -4,10 +4,10 @@
 // this module never imports pmWriter.ts or touches the service-role credential.
 
 import { createClient } from "@supabase/supabase-js";
-import { getAllPmNodeKeys, getDefaultLayout, getPmLayerForNodeKeys } from "@/lib/pm/pmReader";
-import type { PmLayer, PmLayout, PmLayoutPosition } from "@/lib/types/pm";
+import { getAllPmNodeKeys, getDefaultLayout, getItemsForNodeKey, getPmLayerForNodeKeys } from "@/lib/pm/pmReader";
+import type { PmItem, PmLayer, PmLayout, PmLayoutPosition } from "@/lib/types/pm";
 
-const EMPTY_LAYER: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [] };
+const EMPTY_LAYER: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [], people: [] };
 
 function readOnlyClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -60,4 +60,11 @@ export async function getWholeBoardPmLayer(canonicalNodeKeys: string[]): Promise
   const keys = [...new Set([...canonicalNodeKeys, ...pmKeys])];
   if (keys.length === 0) return EMPTY_LAYER;
   return getPmLayerForNodeKeys(client, keys);
+}
+
+/** One card's pm_items. Empty when Supabase is not configured. */
+export async function getItemsForNode(nodeKey: string): Promise<PmItem[]> {
+  const client = readOnlyClient();
+  if (!client) return [];
+  return getItemsForNodeKey(client, nodeKey);
 }

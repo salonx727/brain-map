@@ -155,65 +155,79 @@ export async function getAllPmNodeKeys(client: SupabaseClient): Promise<string[]
 }
 
 export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: string[]): Promise<PmLayer> {
-  if (nodeKeys.length === 0) {
-    return { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [] };
-  }
+  // Wrapped whole: this is the page's single most exposed read (up to three sequential
+  // round trips, the first alone firing nine concurrent queries), and the confirmed
+  // repeat-crash path even after the first retry pass (2026-09-13, Codeman) — a partial
+  // retry of just one round trip isn't enough, so a transient failure anywhere in here
+  // re-runs the whole read from scratch. Safe because every query inside is a read.
+  return withRetry(async () => {
+    if (nodeKeys.length === 0) {
+      const { data, error } = await client.from("pm_people").select("*");
+      if (error) throw new Error(`getPmLayerForNodeKeys: ${error.message}`);
+      return { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [], people: (data ?? []).map(personRow) };
+    }
 
-  const [nodesA, nodesB, items, notes, references, files, linksA, linksB] = await Promise.all([
-    client.from("pm_nodes").select("*").in("node_key", nodeKeys),
-    client.from("pm_nodes").select("*").in("parent_node_key", nodeKeys),
-    client.from("pm_items").select("*").in("node_key", nodeKeys),
-    client.from("pm_notes").select("*").in("node_key", nodeKeys),
-    client.from("pm_references").select("*").in("node_key", nodeKeys),
-    client.from("pm_files").select("*").in("node_key", nodeKeys),
-    client.from("pm_node_links").select("*").in("from_node_key", nodeKeys),
-    client.from("pm_node_links").select("*").in("to_node_key", nodeKeys),
-  ]);
+    const [nodesA, nodesB, items, notes, references, files, linksA, linksB, people] = await Promise.all([
+      client.from("pm_nodes").select("*").in("node_key", nodeKeys),
+      client.from("pm_nodes").select("*").in("parent_node_key", nodeKeys),
+      client.from("pm_items").select("*").in("node_key", nodeKeys),
+      client.from("pm_notes").select("*").in("node_key", nodeKeys),
+      client.from("pm_references").select("*").in("node_key", nodeKeys),
+      client.from("pm_files").select("*").in("node_key", nodeKeys),
+      client.from("pm_node_links").select("*").in("from_node_key", nodeKeys),
+      client.from("pm_node_links").select("*").in("to_node_key", nodeKeys),
+      // Unscoped by node key on purpose — the whole assignee directory is two rows
+      // (Shawn, Codeman) today, so every caller of this function gets it for free rather
+      // than each one having to ask for it separately.
+      client.from("pm_people").select("*"),
+    ]);
 
-  for (const r of [nodesA, nodesB, items, notes, references, files, linksA, linksB]) {
-    if (r.error) throw new Error(`getPmLayerForNodeKeys: ${r.error.message}`);
-  }
+    for (const r of [nodesA, nodesB, items, notes, references, files, linksA, linksB, people]) {
+      if (r.error) throw new Error(`getPmLayerForNodeKeys: ${r.error.message}`);
+    }
 
-  const nodeByKey = new Map<string, PmNode>();
-  for (const row of [...(nodesA.data ?? []), ...(nodesB.data ?? [])]) nodeByKey.set(row.node_key, nodeRow(row));
-  const linkById = new Map<string, PmNodeLink>();
-  for (const row of [...(linksA.data ?? []), ...(linksB.data ?? [])]) linkById.set(row.id, linkRow(row));
+    const nodeByKey = new Map<string, PmNode>();
+    for (const row of [...(nodesA.data ?? []), ...(nodesB.data ?? [])]) nodeByKey.set(row.node_key, nodeRow(row));
+    const linkById = new Map<string, PmNodeLink>();
+    for (const row of [...(linksA.data ?? []), ...(linksB.data ?? [])]) linkById.set(row.id, linkRow(row));
 
-  const knownKeys = new Set([...nodeKeys, ...nodeByKey.keys()]);
-  const missingEndpointKeys = new Set<string>();
-  for (const link of linkById.values()) {
-    if (!knownKeys.has(link.fromNodeKey)) missingEndpointKeys.add(link.fromNodeKey);
-    if (!knownKeys.has(link.toNodeKey)) missingEndpointKeys.add(link.toNodeKey);
-  }
-  if (missingEndpointKeys.size > 0) {
-    const { data, error } = await client.from("pm_nodes").select("*").in("node_key", [...missingEndpointKeys]);
-    if (error) throw new Error(`getPmLayerForNodeKeys: ${error.message}`);
-    for (const row of data ?? []) nodeByKey.set(row.node_key, nodeRow(row));
-  }
+    const knownKeys = new Set([...nodeKeys, ...nodeByKey.keys()]);
+    const missingEndpointKeys = new Set<string>();
+    for (const link of linkById.values()) {
+      if (!knownKeys.has(link.fromNodeKey)) missingEndpointKeys.add(link.fromNodeKey);
+      if (!knownKeys.has(link.toNodeKey)) missingEndpointKeys.add(link.toNodeKey);
+    }
+    if (missingEndpointKeys.size > 0) {
+      const { data, error } = await client.from("pm_nodes").select("*").in("node_key", [...missingEndpointKeys]);
+      if (error) throw new Error(`getPmLayerForNodeKeys: ${error.message}`);
+      for (const row of data ?? []) nodeByKey.set(row.node_key, nodeRow(row));
+    }
 
-  // Scoped to the complete final key set (original + every PM node discovered above,
-  // including a standalone link endpoint) — every node this layer can possibly render is
-  // in here, so no node's real work-state is ever silently missed.
-  const allKeys = [...new Set([...nodeKeys, ...nodeByKey.keys()])];
-  const [{ data: stateRows, error: stateError }, { data: rulingRows, error: rulingError }] = await Promise.all([
-    client.from("pm_node_state").select("*").in("node_key", allKeys),
-    // Every ruling touching this key set, not just the pending ones — a card whose ruling
-    // was rejected still needs to read as rejected rather than as never submitted.
-    client.from("pm_rulings").select("*").in("node_key", allKeys),
-  ]);
-  if (stateError) throw new Error(`getPmLayerForNodeKeys: ${stateError.message}`);
-  if (rulingError) throw new Error(`getPmLayerForNodeKeys: ${rulingError.message}`);
+    // Scoped to the complete final key set (original + every PM node discovered above,
+    // including a standalone link endpoint) — every node this layer can possibly render is
+    // in here, so no node's real work-state is ever silently missed.
+    const allKeys = [...new Set([...nodeKeys, ...nodeByKey.keys()])];
+    const [{ data: stateRows, error: stateError }, { data: rulingRows, error: rulingError }] = await Promise.all([
+      client.from("pm_node_state").select("*").in("node_key", allKeys),
+      // Every ruling touching this key set, not just the pending ones — a card whose ruling
+      // was rejected still needs to read as rejected rather than as never submitted.
+      client.from("pm_rulings").select("*").in("node_key", allKeys),
+    ]);
+    if (stateError) throw new Error(`getPmLayerForNodeKeys: ${stateError.message}`);
+    if (rulingError) throw new Error(`getPmLayerForNodeKeys: ${rulingError.message}`);
 
-  return {
-    nodes: [...nodeByKey.values()],
-    states: (stateRows ?? []).map(nodeStateRow),
-    rulings: (rulingRows ?? []).map(rulingRow),
-    items: (items.data ?? []).map(itemRow),
-    notes: (notes.data ?? []).map(noteRow),
-    references: (references.data ?? []).map(referenceRow),
-    files: (files.data ?? []).map(fileRow),
-    links: [...linkById.values()],
-  };
+    return {
+      nodes: [...nodeByKey.values()],
+      states: (stateRows ?? []).map(nodeStateRow),
+      rulings: (rulingRows ?? []).map(rulingRow),
+      items: (items.data ?? []).map(itemRow),
+      notes: (notes.data ?? []).map(noteRow),
+      references: (references.data ?? []).map(referenceRow),
+      files: (files.data ?? []).map(fileRow),
+      links: [...linkById.values()],
+      people: (people.data ?? []).map(personRow),
+    };
+  });
 }
 
 /** Every to-do across every node, one place — a filtered query, not a separate table (per instruction: no new table if a query answers it). */
@@ -223,6 +237,13 @@ export async function getMasterTodoView(client: SupabaseClient, opts?: { ownerId
   if (opts?.status) query = query.eq("status", opts.status);
   const { data, error } = await query;
   if (error) throw new Error(`getMasterTodoView: ${error.message}`);
+  return (data ?? []).map(itemRow);
+}
+
+/** One card's own pm_items — the list the surface re-reads after a write, so TO DO is whatever Supabase holds, not a leftover optimistic row. */
+export async function getItemsForNodeKey(client: SupabaseClient, nodeKey: string): Promise<PmItem[]> {
+  const { data, error } = await client.from("pm_items").select("*").eq("node_key", nodeKey).order("created_at", { ascending: true });
+  if (error) throw new Error(`getItemsForNodeKey: ${error.message}`);
   return (data ?? []).map(itemRow);
 }
 
