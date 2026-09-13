@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PmFile, PmItem, PmLayer, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
 import { rulingRow } from "@/lib/pm/rulingReader";
+import { withRetry } from "@/lib/retry";
 
 function personRow(r: { id: string; name: string; created_at: string }): PmPerson {
   return { id: r.id, name: r.name, createdAt: r.created_at };
@@ -146,9 +147,11 @@ function nodeStateRow(r: { node_key: string; state: string; updated_by: string |
  */
 /** Every PM node's key, for a caller that needs the whole board rather than a scoped subgraph — see getWholeBoardPmLayer. */
 export async function getAllPmNodeKeys(client: SupabaseClient): Promise<string[]> {
-  const { data, error } = await client.from("pm_nodes").select("node_key");
-  if (error) throw new Error(`getAllPmNodeKeys: ${error.message}`);
-  return (data ?? []).map((r) => r.node_key as string);
+  return withRetry(async () => {
+    const { data, error } = await client.from("pm_nodes").select("node_key");
+    if (error) throw new Error(`getAllPmNodeKeys: ${error.message}`);
+    return (data ?? []).map((r) => r.node_key as string);
+  });
 }
 
 export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: string[]): Promise<PmLayer> {
@@ -232,15 +235,17 @@ export async function getUnsortedFiles(client: SupabaseClient): Promise<PmFile[]
 
 /** The single is_default layout plus its positions, or null if none has been seeded yet (falls back to GraphCanvas's computed layout). */
 export async function getDefaultLayout(client: SupabaseClient): Promise<{ layout: PmLayout; positions: PmLayoutPosition[] } | null> {
-  const { data: layouts, error: layoutError } = await client.from("pm_layouts").select("*").eq("is_default", true).limit(1);
-  if (layoutError) throw new Error(`getDefaultLayout: ${layoutError.message}`);
-  const layout = layouts?.[0];
-  if (!layout) return null;
+  return withRetry(async () => {
+    const { data: layouts, error: layoutError } = await client.from("pm_layouts").select("*").eq("is_default", true).limit(1);
+    if (layoutError) throw new Error(`getDefaultLayout: ${layoutError.message}`);
+    const layout = layouts?.[0];
+    if (!layout) return null;
 
-  const { data: positions, error: positionsError } = await client.from("pm_layout_positions").select("*").eq("layout_id", layout.id);
-  if (positionsError) throw new Error(`getDefaultLayout: ${positionsError.message}`);
+    const { data: positions, error: positionsError } = await client.from("pm_layout_positions").select("*").eq("layout_id", layout.id);
+    if (positionsError) throw new Error(`getDefaultLayout: ${positionsError.message}`);
 
-  return { layout: layoutRow(layout), positions: (positions ?? []).map(layoutPositionRow) };
+    return { layout: layoutRow(layout), positions: (positions ?? []).map(layoutPositionRow) };
+  });
 }
 
 export async function listPeople(client: SupabaseClient): Promise<PmPerson[]> {
