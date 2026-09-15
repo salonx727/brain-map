@@ -1,0 +1,289 @@
+{
+  "scheme": "BLK-NNN",
+  "note": "Assigned once, never reassigned. Ids are not reused after retirement. Section and subheading are fields, not identity.",
+  "assigned": [
+    {
+      "id": "BLK-001",
+      "text": "dropQueue uses Pool A connection — fix one line in drop_engine.js",
+      "subheading": "Launch Blockers — Must resolve before any user onboards",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-002",
+      "text": "RAMP worker appointment-complete subscription — remove from ramp_worker.js",
+      "subheading": "Launch Blockers — Must resolve before any user onboards",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-003",
+      "text": "workers_index.js — register session_close_worker, remove stale registrations",
+      "subheading": "Launch Blockers — Must resolve before any user onboards",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-004",
+      "text": "~SKINZ_DEPLOY_ENABLED env flag — add to skinz_cron.js, set false pre-launch~ → MOVED TO V2 PREP (LOCK-260604-019). Flag stays false; no longer a V1 launch blocker. V1 co-brand = manual partner upload to Stage/SET/Build Station.",
+      "subheading": "Launch Blockers — Must resolve before any user onboards",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-005",
+      "text": "Signup intake rate limiter — Redis counter on onboarding endpoint",
+      "subheading": "Launch Blockers — Must resolve before any user onboards",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-006",
+      "text": "/api/sync/intents endpoint — implement server-side sync route",
+      "subheading": "Launch Blockers — Must resolve before any user onboards",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-007",
+      "text": "tag_attribution_chains.scoring_eligible field",
+      "subheading": "High-Risk — Resolve before Day 14",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-008",
+      "text": "Overnight-batch workers: set to 8",
+      "subheading": "High-Risk — Resolve before Day 14",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-009",
+      "text": "note_save conflict detection: restore ±15 min",
+      "subheading": "High-Risk — Resolve before Day 14",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-010",
+      "text": "Low-priority queue: shift start to midnight EST",
+      "subheading": "High-Risk — Resolve before Day 14",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-011",
+      "text": "Ghost Notes S2 route: implement cache-first read",
+      "subheading": "Remaining Pre-Launch Build",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-012",
+      "text": "RAMP mobile UI: post confirmation tap on device screen",
+      "subheading": "Remaining Pre-Launch Build",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-013",
+      "text": "skinz_cron.js: batched deployment 500/min + rollback",
+      "subheading": "Remaining Pre-Launch Build",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-014",
+      "text": "DLQ alert routing: Twilio SMS or email to on-call",
+      "subheading": "Remaining Pre-Launch Build",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-015",
+      "text": "session-close step failures: wire to deferred_queue_log",
+      "subheading": "Remaining Pre-Launch Build",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-016",
+      "text": "Launch day runbook: define who controls each operational lever",
+      "subheading": "Remaining Pre-Launch Build",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-017",
+      "text": "Vish API integration · Phase 0/1 · STATUS: PLANNED",
+      "subheading": "Remaining Pre-Launch Build",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-018",
+      "text": "founder_registry table + seed with 169 Founders",
+      "subheading": "V1 Founding Window Build (Pre-Launch)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-019",
+      "text": "referral_key table + key issuance service",
+      "subheading": "V1 Founding Window Build (Pre-Launch)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-020",
+      "text": "Branded Referral Key metadata embedded in referral links",
+      "subheading": "V1 Founding Window Build (Pre-Launch)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-021",
+      "text": "Tribe Convergence detection at signup",
+      "subheading": "V1 Founding Window Build (Pre-Launch)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-022",
+      "text": "Tribe Alignment screen + permanent attribution write",
+      "subheading": "V1 Founding Window Build (Pre-Launch)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-023",
+      "text": "founding_window:status Redis key + automatic Day 120 flip",
+      "subheading": "V1 Founding Window Build (Pre-Launch)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-024",
+      "text": "THE WIRE / SIGNAL v2 — hierarchical broadcast, permission ceiling per tier (gated by Q-IDENTITY-AUTH-SPEC)",
+      "subheading": "V1 Build Additions (Jul 27, 2026 — not yet in code)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-025",
+      "text": "NEXUS V1 — 2D own-downline overnight snapshot, tap-node stats, SKINZ tribe color per node",
+      "subheading": "V1 Build Additions (Jul 27, 2026 — not yet in code)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-026",
+      "text": "Identity architecture — UUID anchor, E.164 phone surface, phone+name disambiguation, claimed/unclaimed client node states",
+      "subheading": "V1 Build Additions (Jul 27, 2026 — not yet in code)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-027",
+      "text": "Care Card / Cube split — RCS primary, MMS fallback, single hyperlink, zero promotional content in-message",
+      "subheading": "V1 Build Additions (Jul 27, 2026 — not yet in code)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-028",
+      "text": "Referral Gratitude Gate — GHOST NOTES brief lock at new-client arrival; referring-client appointment unlock",
+      "subheading": "V1 Build Additions (Jul 27, 2026 — not yet in code)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-029",
+      "text": "Node value scoring — behavioral KPI baseline, daily recalculation, configurable weighting, partner-custom KPI mode",
+      "subheading": "V1 Build Additions (Jul 27, 2026 — not yet in code)",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-030",
+      "text": "OFFGRID headline build (full native app, tiered sync, Path A AI pre-gen, per-technician inventory, Stripe Connect offline, expanded /api/sync/intents, provisional booking, regional parents)",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-031",
+      "text": "Multi-tenant sublease model · booth rental infrastructure",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-032",
+      "text": "MUSE V2: hierarchy dashboard + individual KPI",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-033",
+      "text": "CO-OP MODE dual attribution schema",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-034",
+      "text": "TAG creative gravity scoring — 6 months with Table of Eight data",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-035",
+      "text": "Performance-based commission tiers",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-036",
+      "text": "SKINZ international deployment windows",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-037",
+      "text": "Tokenization + Rewards (container built, mechanic ships V2)",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-038",
+      "text": "NEXUS V2 — 3D, real-time, full platform view, brand-scope traversal",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-039",
+      "text": "Node value scoring — economic layer (behavioral baseline ships V1)",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-040",
+      "text": "Care Card product-highlight surface on salon tablet at checkout",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-041",
+      "text": "Magic Selfie Loop pipeline (pending Q-SELFIE-PLACEMENT)",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-042",
+      "text": "RAMP V3 Build Station counter (pending Q-BUILD-STATION-COUNTER)",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-043",
+      "text": "MICROSITE cube spec (§03d, pending Q-MICROSITE-CUBE-SECTION)",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-044",
+      "text": "TAG human-momentum capture fields",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-045",
+      "text": "Oracle Face live cognition surface build",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-046",
+      "text": "Salon OS control-panel labeling pass",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    },
+    {
+      "id": "BLK-047",
+      "text": "§03d cube spec absorption of Oracle Face visual model",
+      "subheading": "V2 Open Items",
+      "firstSeen": "2026-09-13"
+    }
+  ],
+  "retired": []
+}

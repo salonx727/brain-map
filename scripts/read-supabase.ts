@@ -37,6 +37,9 @@ const READABLE = [
   "pm_layouts",
   "pm_layout_positions",
   "pm_people",
+  "pm_item_assignments",
+  "pm_canon_assignments",
+  "pm_rulings",
 ] as const;
 
 const ROW_CAP = 200;

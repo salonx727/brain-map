@@ -50,7 +50,7 @@ export async function getCanonicalGraph(): Promise<CanonicalGraph> {
   // Lazy import: keeps the Supabase client out of the local-dev path's module graph
   // when it's never going to be used — SUPABASE_URL/SUPABASE_ANON_KEY are checked above,
   // so createClient() is never called with missing/empty args either way.
-  const { createClient } = await import("@supabase/supabase-js");
-  const client = createClient(supabaseUrl, supabaseAnonKey);
+  const { createAnonClient } = await import("@/lib/supabase/client");
+  const client = createAnonClient(supabaseUrl, supabaseAnonKey);
   return fetchCanonicalGraphFromSupabase(client);
 }

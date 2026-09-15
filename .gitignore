@@ -14,3 +14,4 @@ dev-*.log
 dev-*.err
 .vercel
 .env*
+supabase/.temp/

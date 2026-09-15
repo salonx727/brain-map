@@ -9,16 +9,19 @@ import {
   useState,
 } from "react";
 import { counts, hasLink, isEmpty, linksOf } from "./graph";
+import { nextUnusedTribeColor } from "@/lib/pm/tribeColors";
 import {
   createNodeLinkAction,
   createPmNodeAction,
   deletePmNodeAction,
   getSignedFileUrlAction,
+  listItemsForNodeAction,
   setPmNodeParentAction,
   uploadFileAction,
   upsertLayoutPositionAction,
 } from "@/app/actions/pm";
-import type { BrainNode, Model, Shape } from "./types";
+import type { BrainNode, Item, Model, Shape } from "./types";
+import type { PmItem } from "@/lib/types/pm";
 
 /* Model itself now lives in ./types, because the server builds one before any of this
    client module exists. Re-exported so every existing `from "@/lib/brain"` import keeps
@@ -61,6 +64,12 @@ export type Brain = {
    * that did not land, which is the whole reason this is not fire-and-forget.
    */
   persist: (run: () => Promise<unknown>, rollback?: () => void) => void;
+  /**
+   * Replace this card's TO DO / typed-blocker lists with whatever pm_items currently
+   * holds. Called after a write so the list is the database, not the optimistic row.
+   * Canon §15 blockers stay — they have no pm_items row.
+   */
+  refreshNodeLists: (nodeId: string) => Promise<void>;
   storeNote: string;
   savedFlash: boolean;
 
@@ -161,6 +170,23 @@ export function BrainProvider({
     [bump],
   );
 
+  const refreshNodeLists = useCallback(
+    async (nodeId: string) => {
+      const d = modelRef.current.nodes[nodeId];
+      if (!d) return;
+      const rows = await listItemsForNodeAction(nodeId);
+      const asEntry = (item: PmItem): Item => ({
+        id: item.id,
+        text: item.title,
+        done: item.status === "done",
+        sec: "",
+      });
+      d.todos = rows.filter((r) => r.kind === "todo").map(asEntry);
+      bump();
+    },
+    [bump],
+  );
+
   const addFiles = useCallback(
     (nodeId: string, list: FileList | File[]) => {
       const d = modelRef.current.nodes[nodeId];
@@ -218,6 +244,14 @@ export function BrainProvider({
           parentNodeKey: opts.wireTo ?? null,
         });
 
+        // Auto-assigned so a card someone just made is never the same hue as one
+        // already on the field — never user-picked at creation, never touching a
+        // fixed engine's own NODE_HUES entry in Field3D.tsx.
+        const usedColors = Object.values(m.nodes)
+          .map((n) => n.color)
+          .filter((c): c is string => c !== null);
+        const color = nextUnusedTribeColor(usedColors).key;
+
         m.nodes[created.nodeKey] = {
           id: created.nodeKey,
           ref: created.displayRef,
@@ -226,7 +260,7 @@ export function BrainProvider({
           y: opts.y,
           name: created.label,
           sec: "",
-          color: null,
+          color,
           state: "UNTOUCHED",
           origin: "user",
           // A new card is a proposal, and it says so from the first paint. Waiting for a
@@ -258,10 +292,11 @@ export function BrainProvider({
 
         if (layoutId) {
           try {
-            await upsertLayoutPositionAction({ layoutId, nodeKey: created.nodeKey, x: opts.x, y: opts.y });
+            await upsertLayoutPositionAction({ layoutId, nodeKey: created.nodeKey, x: opts.x, y: opts.y, color });
           } catch {
-            // Position is still on the canvas this session; a reload drops it to the
-            // unplaced row. Not worth refusing the card over.
+            // Position (and the assigned color with it) is still on the canvas this
+            // session; a reload drops both to the unplaced row's defaults. Not worth
+            // refusing the card over.
           }
         }
 
@@ -381,6 +416,7 @@ export function BrainProvider({
       bump,
       version,
       persist,
+      refreshNodeLists,
       storeNote,
       savedFlash,
       addFiles,
@@ -393,7 +429,7 @@ export function BrainProvider({
       canEditNode,
       layoutId,
     }),
-    [bump, version, persist, storeNote, savedFlash, addFiles, addNode, removeNode, attachExistingAsSub, removed, reset, isEmptyCb, canEditNode, layoutId],
+    [bump, version, persist, refreshNodeLists, storeNote, savedFlash, addFiles, addNode, removeNode, attachExistingAsSub, removed, reset, isEmptyCb, canEditNode, layoutId],
   );
 
   return <BrainCtx.Provider value={value}>{children}</BrainCtx.Provider>;

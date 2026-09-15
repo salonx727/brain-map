@@ -13,6 +13,21 @@ import { matchRegistryEntries } from "@/lib/coyote/nodeRegistry";
 
 const SECTION_LABEL = "§15";
 
+/**
+ * A stable blocker id, if canon has started carrying one: "- **BLK-001** · text".
+ *
+ * §15 has none today — 0 of 47 rows — so every blocker is currently identified by its own
+ * text, which means rewording a bullet orphans any state attached to it. The amendment
+ * that fixes that is Shawn's to rule on (see scripts/propose-blocker-ids.ts, which writes
+ * the patch and never touches COYOTE). Reading the id here first means the moment he lands
+ * it, the id becomes the key with no second change and no migration; until then the
+ * fallback below is exactly today's behaviour.
+ *
+ * The id deliberately carries no section number: §15 has moved before, and nodeRegistry.ts
+ * already settled that section numbers are metadata and never identity.
+ */
+const BLOCKER_ID = /^\*\*(BLK-\d{3,})\*\*\s*[·:—-]?\s*(.*)$/;
+
 export function extractBlockers(section15Lines: string[] | undefined): { items: AttributedItem[]; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];
   if (!section15Lines) {
@@ -33,14 +48,21 @@ export function extractBlockers(section15Lines: string[] | undefined): { items: 
     const bulletMatch = /^[-*]\s+(.*)$/.exec(line);
     if (!bulletMatch) continue;
 
-    const text = bulletMatch[1].trim();
+    const bullet = bulletMatch[1].trim();
+    if (bullet.length === 0) continue;
+
+    // Strip the id off the text rather than leaving it inline, so the same blocker reads
+    // identically whether or not canon has been amended yet — the id travels in `qId`.
+    const idMatch = BLOCKER_ID.exec(bullet);
+    const qId = idMatch?.[1];
+    const text = idMatch ? idMatch[2].trim() : bullet;
     if (text.length === 0) continue;
 
     const matches = matchRegistryEntries(text);
     if (matches.length === 1) {
-      items.push({ text, sourceSection: currentSubheading, confidence: "matched", nodeKey: matches[0].nodeKey });
+      items.push({ text, qId, sourceSection: currentSubheading, confidence: "matched", nodeKey: matches[0].nodeKey });
     } else {
-      items.push({ text, sourceSection: currentSubheading, confidence: "unattributed" });
+      items.push({ text, qId, sourceSection: currentSubheading, confidence: "unattributed" });
       if (matches.length > 1) {
         diagnostics.push({
           severity: "warning",

@@ -6,8 +6,10 @@ import { IntakeProvider } from "@/lib/intake";
 import { upsertLayoutPositionAction } from "@/app/actions/pm";
 import { SIZE } from "@/lib/seed";
 import { balanceLayout, collides, linksOf, otherEnd, realignGrid } from "@/lib/graph";
+import { blockerAskDraft } from "@/lib/ai/blockerAsk";
 import type { Model } from "@/lib/types";
 import type { ReconcileCandidate } from "@/lib/pm/rulingReader";
+import Booting from "./Booting";
 import ControlPanel from "./ControlPanel";
 import Field3D from "./Field3D";
 import NodeCard from "./NodeCard";
@@ -29,7 +31,7 @@ export default function BrainSurface({
      because the canvas measures the window on first paint. */
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
+  if (!mounted) return <Booting />;
 
   return (
     <BrainProvider initialModel={initialModel} layoutId={layoutId}>
@@ -816,7 +818,11 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
         <Roster
           mode={roster}
           onClose={() => setRoster(null)}
-          onHubTab={(t) => setRoster({ kind: "hub", tab: t })}
+          onHubTab={(t) =>
+            setRoster((current) =>
+              current?.kind === "hub" ? { ...current, tab: t } : { kind: "hub", tab: t },
+            )
+          }
         />
       ) : null}
 
@@ -835,6 +841,13 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
             onDismiss={dismiss}
             onOpenCard={control}
             onShowOnField={showWire}
+            onAskBlocker={(item) =>
+              setRoster({
+                kind: "hub",
+                tab: 1,
+                draft: blockerAskDraft(openNode, item),
+              })
+            }
           />
         ) : null}
       </div>

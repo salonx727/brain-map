@@ -23,14 +23,17 @@ import {
 } from "@/app/actions/pm";
 import { updateRulingIntentAction } from "@/app/actions/rulings";
 import { connectionSummary } from "@/lib/pm/coyoteText";
-import type { BrainNode, Link } from "@/lib/types";
+import type { BrainNode, Item, Link } from "@/lib/types";
 import type { ConnectionIntent, ConnectionRelation } from "@/lib/types/pm";
 import ListEditor from "./ListEditor";
+import PrototypePanel from "./PrototypePanel";
 import RulingList from "./RulingList";
 import WirePicker, { optionsFromModel } from "./WirePicker";
 
 /** One past TAGS, and only ever rendered on Shawn's card — see the strip below. */
 const RULING_TAB = TAGS.length;
+/** One past RULING_TAB, and only ever rendered on an engine card — see isEngine below. */
+const PROTOTYPE_TAB = TAGS.length + 1;
 
 /** The four fields §35 declares a connection with. connections.ts reads exactly these, so a ruling written in this vocabulary parses back correctly once Shawn puts it in COYOTE. */
 const INTENT_FIELDS = [
@@ -62,6 +65,7 @@ export default function ControlPanel({
   onDismiss,
   onOpenCard,
   onShowOnField,
+  onAskBlocker,
 }: {
   d: BrainNode;
   tab: number | null;
@@ -69,6 +73,7 @@ export default function ControlPanel({
   onDismiss: () => void;
   onOpenCard: (id: string, tab: number | null) => void;
   onShowOnField: (id: string) => void;
+  onAskBlocker: (item: Item) => void;
 }) {
   const { model, bump, persist, addFiles, addNode, removeNode, canEditNode } = useBrain();
   const intake = useIntake();
@@ -82,6 +87,8 @@ export default function ControlPanel({
    */
   const editable = canEditNode(d.id);
   const isShawn = d.id === "owner:shawn";
+  const isEngine = d.id.startsWith("engine:");
+  const engineKey = isEngine ? d.id.slice(d.id.indexOf(":") + 1) : null;
   const ruling = model.rulings.find((r) => r.nodeKey === d.id) ?? null;
 
   // Held locally because updateRulingIntent writes all four fields at once — sending only
@@ -328,16 +335,24 @@ export default function ControlPanel({
           </button>
         ))}
         {/* Only on Shawn's card. The queue is his — nothing reaches canon except by his
-            ruling — so it is a category on the card that already carries §00a's open
-            questions, not a sixth tab everywhere. */}
+            ruling — so it is a category on his card, not a sixth tab everywhere. */}
         {isShawn ? (
           <button className={tab === RULING_TAB ? "on" : ""} onClick={() => setTab(tab === RULING_TAB ? null : RULING_TAB)}>
             {"RULING " + model.rulings.length}
           </button>
         ) : null}
+        {/* Only on an engine card — a prototype belongs to the engine it's a UI for,
+            never a generic tab everywhere else. */}
+        {isEngine ? (
+          <button className={tab === PROTOTYPE_TAB ? "on" : ""} onClick={() => setTab(tab === PROTOTYPE_TAB ? null : PROTOTYPE_TAB)}>
+            PROTOTYPE
+          </button>
+        ) : null}
       </div>
 
       {isShawn && tab === RULING_TAB ? <RulingList onOpenCard={(id) => onOpenCard(id, null)} /> : null}
+
+      {isEngine && tab === PROTOTYPE_TAB && engineKey ? <PrototypePanel engineKey={engineKey} /> : null}
 
       {/* UI slots — a fixed array of 4 where slot_index matters, images only */}
       {tab === 0 ? (
@@ -387,8 +402,12 @@ export default function ControlPanel({
         </div>
       ) : null}
 
-      {tab === 1 ? <ListEditor d={d} field="todos" placeholder="Add a to-do" /> : null}
-      {tab === 2 ? <ListEditor d={d} field="blockers" placeholder="Add a blocker" /> : null}
+      {/* Same ASK affordance on both lists — Shawn, 2026-09-12: "I should be able to click
+          on the blocker and walk through... I cannot do that in the to-do column." The
+          326-item blocker handoff landed as TO DO (BLK stays canon-only), so TO DO needed
+          the same walk-through BLK already had, not a separate feature. */}
+      {tab === 1 ? <ListEditor d={d} field="todos" placeholder="Add a to-do" onAsk={onAskBlocker} /> : null}
+      {tab === 2 ? <ListEditor d={d} field="blockers" placeholder="Add a blocker" onAsk={onAskBlocker} /> : null}
 
       {tab === 4 ? (
         <>

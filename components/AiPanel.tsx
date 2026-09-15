@@ -21,7 +21,7 @@ import MapAsk from "./MapAsk";
 
 type Engine = "BRAIN" | "MAP";
 
-export default function AiPanel() {
+export default function AiPanel({ draft }: { draft?: string }) {
   const [engine, setEngine] = useState<Engine>("BRAIN");
 
   return (
@@ -39,7 +39,7 @@ export default function AiPanel() {
         ))}
       </div>
 
-      {engine === "BRAIN" ? <BrainChat /> : <MapAsk />}
+      {engine === "BRAIN" ? <BrainChat draft={draft} /> : <MapAsk draft={draft} />}
     </div>
   );
 }

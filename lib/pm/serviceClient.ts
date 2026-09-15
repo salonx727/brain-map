@@ -3,7 +3,8 @@
 // Server Action in src/app/actions/pm.ts calls this, never `createClient` directly, so
 // there is exactly one place to audit for "does this ever run in the browser."
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/client";
 
 export function createPmServiceClient(): SupabaseClient {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -11,5 +12,5 @@ export function createPmServiceClient(): SupabaseClient {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error("createPmServiceClient: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must both be set — PM writes require Supabase to be configured.");
   }
-  return createClient(supabaseUrl, serviceRoleKey);
+  return createServiceClient(supabaseUrl, serviceRoleKey);
 }

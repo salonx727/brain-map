@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useBrain } from "@/lib/brain";
 import { linksOf, otherEnd } from "@/lib/graph";
+import { findTribeColorByKey } from "@/lib/pm/tribeColors";
 import type { Link, Nodes } from "@/lib/types";
 
 /* ==================================================================
@@ -119,7 +120,15 @@ const NODE_HUES: Record<string, string> = {
   "intake:GATE": "#FF8A14",
   "intake:BOOKING": "#FF8A14",
 };
-const DEFAULT_HUE = "#FF8A14"; /* Baton — today's color, for anything not named above */
+const DEFAULT_HUE = "#FF8A14"; /* Baton — the fallback: an engine/intake NODE_HUES never names, and a PM card with no color assigned yet (pre-2026-09-15 cards, or the rare exhausted-palette repeat) */
+
+/** A fixed engine/intake keeps its NODE_HUES entry regardless of anything stored on the card. Anything else reads its own auto-assigned Tribe Color (lib/pm/tribeColors.ts) if it has one. */
+function hueFor(nodeKey: string, colorKey: string | null): string {
+  const fixed = NODE_HUES[nodeKey];
+  if (fixed) return fixed;
+  const assigned = findTribeColorByKey(colorKey)?.hex;
+  return assigned ?? DEFAULT_HUE;
+}
 
 function hexA(hex: string, a: number) {
   const n = parseInt(hex.slice(1), 16);
@@ -334,7 +343,7 @@ export default function Field3D({
         const rad = h.R * p.s * (1 + Math.sin(t * 1.6 + h.R) * 0.03);
         const blocked = d.blockers.length > 0 || d.state === "BLOCKED";
 
-        const hue = NODE_HUES[h.id] ?? DEFAULT_HUE;
+        const hue = hueFor(h.id, d.color);
         const g = ctx.createRadialGradient(
           p.x - rad * 0.4,
           p.y - rad * 0.42,

@@ -3,17 +3,17 @@
 // src/components/** imports from src/lib/pm/** directly. Read-only by construction:
 // this module never imports pmWriter.ts or touches the service-role credential.
 
-import { createClient } from "@supabase/supabase-js";
-import { getAllPmNodeKeys, getDefaultLayout, getItemsForNodeKey, getPmLayerForNodeKeys } from "@/lib/pm/pmReader";
+import { createAnonClient } from "@/lib/supabase/client";
+import { getDefaultLayout, getItemsForNodeKey, getPmLayerForNodeKeys, getWholePmLayer } from "@/lib/pm/pmReader";
 import type { PmItem, PmLayer, PmLayout, PmLayoutPosition } from "@/lib/types/pm";
 
-const EMPTY_LAYER: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [], people: [] };
+const EMPTY_LAYER: PmLayer = { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [], people: [], canonAssignments: [] };
 
 function readOnlyClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY;
   if (!supabaseUrl || !anonKey) return null;
-  return createClient(supabaseUrl, anonKey);
+  return createAnonClient(supabaseUrl, anonKey);
 }
 
 /**
@@ -42,24 +42,16 @@ export async function getPmLayer(nodeKeys: string[]): Promise<PmLayer> {
 }
 
 /**
- * The whole board: PM data for these canonical keys plus every PM node that exists,
- * however it is attached.
- *
- * getPmLayerForNodeKeys is scoped on purpose and stays that way — it answers "what does
- * the PM layer know about exactly these keys", which is what a detail panel wants. But an
- * independent card has no canonical parent, no canonical key of its own and possibly no
- * links, so that question excludes it by construction. Asking it for the map meant a card
- * created with ADD CARD was written, acknowledged, and then absent on the next reload —
- * the precise "it looked saved" failure this rebuild exists to eliminate. The map asks a
- * different question, so it passes the complete key set instead of widening the scoped one.
+ * The whole board. Unscoped on purpose — a card with no canonical parent and no
+ * links is still a real card, and asking the scoped reader for "these keys" is
+ * how ADD CARD used to vanish on reload. The key list argument is accepted so
+ * older callers keep compiling; it is not used. Ten `.in(node_key, everyKey)`
+ * filters is what Gateway-Timed-Out the live map on refresh.
  */
-export async function getWholeBoardPmLayer(canonicalNodeKeys: string[]): Promise<PmLayer> {
+export async function getWholeBoardPmLayer(_canonicalNodeKeys?: string[]): Promise<PmLayer> {
   const client = readOnlyClient();
   if (!client) return EMPTY_LAYER;
-  const pmKeys = await getAllPmNodeKeys(client);
-  const keys = [...new Set([...canonicalNodeKeys, ...pmKeys])];
-  if (keys.length === 0) return EMPTY_LAYER;
-  return getPmLayerForNodeKeys(client, keys);
+  return getWholePmLayer(client);
 }
 
 /** One card's pm_items. Empty when Supabase is not configured. */

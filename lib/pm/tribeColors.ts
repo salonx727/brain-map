@@ -35,6 +35,25 @@ export function findTribeColor(hex: string | null | undefined): TribeColor | nul
   return TRIBE_COLORS.find((c) => c.hex === hex) ?? null;
 }
 
+export function findTribeColorByKey(key: string | null | undefined): TribeColor | null {
+  if (!key) return null;
+  return TRIBE_COLORS.find((c) => c.key === key) ?? null;
+}
+
+/**
+ * The color a new node gets automatically, so a card someone just made is never the same
+ * hue as one already on the field. Cycles PLASMA→...→SNOW in spectrum order, skipping
+ * PRISM (key 15 — no flat hex, nothing for a flat-fill consumer like Field3D to render)
+ * and skipping every key already in use. Once all fourteen flat colors are taken, the
+ * (rare, 2-3-person-scale) fifteenth-plus new node repeats from the top rather than
+ * erroring — a repeated color is a smaller problem than a card with none at all.
+ */
+export function nextUnusedTribeColor(usedKeys: Iterable<string>): TribeColor {
+  const used = new Set(usedKeys);
+  const eligible = TRIBE_COLORS.filter((c) => c.hex !== null);
+  return eligible.find((c) => !used.has(c.key)) ?? eligible[used.size % eligible.length];
+}
+
 // Filled-surface card treatment (approved colour study, 2026-09-05): a coloured card
 // gets a deep tint of its Tribe Colour as the surface, and bright/dim tints of the same
 // hue for ink — never a flat grey card with just a coloured border. `mix` blends toward

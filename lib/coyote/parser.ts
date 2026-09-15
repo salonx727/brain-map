@@ -83,12 +83,21 @@ export function parseCanonicalNodes(source: CoyoteSource): ParseResult {
   const section35 = sliceSection(lines, headings, "35");
   const section15 = sliceSection(lines, headings, "15");
   const section00a = sliceSection(lines, headings, "00a");
+  // §39.7 keeps a second register of open questions, in the same row shape as §00a's. It
+  // is not a duplicate of §00a and nothing else reaches it, so its twelve questions were
+  // simply absent from the map until it was named here.
+  const section397 = sliceSection(lines, headings, "39\\.7");
 
   const screens = extractScreens(section03, sourceMeta);
   const engines = extractEngines(section35, sourceMeta);
   const intake = extractIntake(lines, sourceMeta);
   const blockers = extractBlockers(section15);
-  const openQuestions = extractOpenQuestions(section00a);
+  const questions00a = extractOpenQuestions(section00a);
+  const questions397 = extractOpenQuestions(section397, "§39.7");
+  const openQuestions = {
+    items: [...questions00a.items, ...questions397.items],
+    diagnostics: [...questions00a.diagnostics, ...questions397.diagnostics],
+  };
 
   attachItems(engines.nodes, blockers.items, "blockers");
   attachItems(engines.nodes, openQuestions.items, "openQuestions");

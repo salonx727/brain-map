@@ -11,7 +11,7 @@ import IntakePanel from "./IntakePanel";
 export type RosterMode =
   | { kind: "state"; id: string }
   /** AI above, INTAKE below — one door, two tabs */
-  | { kind: "hub"; tab: 0 | 1 };
+  | { kind: "hub"; tab: 0 | 1; draft?: string };
 
 export default function Roster({
   mode,
@@ -107,7 +107,7 @@ export default function Roster({
               ))}
             </div>
 
-            {mode.tab === 0 ? <IntakePanel /> : <AiPanel />}
+            {mode.tab === 0 ? <IntakePanel /> : <AiPanel draft={mode.draft} />}
           </>
         )}
       </div>

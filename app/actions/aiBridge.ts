@@ -11,28 +11,60 @@
 // was done, and the timeout would look like a failure when the work had actually run.
 
 import { createPmServiceClient } from "@/lib/pm/serviceClient";
-import { createThread, latestOrNewThread, queueUserMessage, readThread, bridgeStalled } from "@/lib/ai/bridge";
+import {
+  createThread,
+  latestOrNewThread,
+  originOfThisDeployment,
+  queueUserMessage,
+  readThread,
+  bridgeStalled,
+} from "@/lib/ai/bridge";
+import { brainGateConfigured, brainUnlocked, closeBrainGate, openBrainGate, requireBrainUnlocked } from "@/lib/ai/brainGate";
 import * as pmWriter from "@/lib/pm/pmWriter";
 import type { AiMessage } from "@/lib/ai/bridge";
 
+export interface BrainGateState {
+  /** Whether this deployment asks for a passphrase at all. */
+  required: boolean;
+  /** Whether this browser has already given it. */
+  open: boolean;
+}
+
+/** What the panel needs to decide between showing the lock and showing the conversation. */
+export async function brainGateStateAction(): Promise<BrainGateState> {
+  return { required: brainGateConfigured(), open: await brainUnlocked() };
+}
+
+/** Returns false on a wrong passphrase rather than throwing — a typo is not an error. */
+export async function unlockBrainAction(passphrase: string): Promise<boolean> {
+  return openBrainGate(passphrase);
+}
+
+export async function lockBrainAction(): Promise<void> {
+  await closeBrainGate();
+}
+
 /** Reopens the last conversation, or opens the first one. */
 export async function openBrainThreadAction(): Promise<string> {
+  await requireBrainUnlocked();
   const thread = await latestOrNewThread(createPmServiceClient());
   return thread.id;
 }
 
 /** Starts a fresh conversation with its own session — the map's answer to Telegram's `/new`. */
 export async function startBrainThreadAction(): Promise<string> {
+  await requireBrainUnlocked();
   const thread = await createThread(createPmServiceClient());
   return thread.id;
 }
 
 export async function sendToBrainAction(input: { threadId: string; content: string; fileIds?: string[] }): Promise<void> {
+  await requireBrainUnlocked();
   const content = input.content.trim();
   if (!content && !input.fileIds?.length) {
     throw new Error("Nothing to send.");
   }
-  await queueUserMessage(createPmServiceClient(), { ...input, content });
+  await queueUserMessage(createPmServiceClient(), { ...input, content, origin: originOfThisDeployment() });
 }
 
 export interface BrainThreadState {
@@ -42,6 +74,10 @@ export interface BrainThreadState {
 }
 
 export async function readBrainThreadAction(threadId: string): Promise<BrainThreadState> {
+  // Gated as hard as sending. Threads are global, so the transcript of someone else's
+  // conversation with an agent that can read the vault is exactly as sensitive as the
+  // ability to start one.
+  await requireBrainUnlocked();
   const messages = await readThread(createPmServiceClient(), threadId);
   return { messages, stalled: bridgeStalled(messages) };
 }
@@ -55,6 +91,7 @@ export async function readBrainThreadAction(threadId: string): Promise<BrainThre
  * UNSORTED, which is exactly what it is until the agent decides where it belongs.
  */
 export async function uploadForBrainAction(formData: FormData): Promise<{ id: string; fileName: string }> {
+  await requireBrainUnlocked();
   const file = formData.get("file");
   if (!(file instanceof Blob)) throw new Error("uploadForBrainAction: no file provided");
   const fileName = file instanceof File ? file.name : "upload";

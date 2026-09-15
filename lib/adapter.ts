@@ -15,9 +15,9 @@
 
 import { SEED } from "./seed";
 import type { BrainNode, Drop, Item, Link, Model, NodeState, Shape, Shot } from "./types";
-import type { CanonicalConnection, CanonicalNode, Diagnostic } from "@/lib/types/canonicalNode";
+import type { AttributedItem, CanonicalConnection, CanonicalNode, Diagnostic, UnattributedItem } from "@/lib/types/canonicalNode";
 import type { PmLayer, PmLayoutPosition, PmNodeWorkState } from "@/lib/types/pm";
-import { OWNERS, unattributedFrom } from "@/lib/owners";
+import { OWNERS, defaultOwnerKey, itemFingerprint, unattributedFrom } from "@/lib/owners";
 
 /** The database spells states with underscores; this UI's own NodeState uses spaces. Converted here and nowhere else. */
 const DB_TO_UI_STATE: Record<PmNodeWorkState, NodeState> = {
@@ -48,6 +48,26 @@ const SEED_BY_REF = new Map(SEED.map((s) => [s[0], { shape: s[1], x: s[2], y: s[
 /** Where a node with no sheet entry and no saved position goes — below the sheet, in arrival order, never on top of it. */
 const UNPLACED_ROW_Y = 1650;
 const UNPLACED_SPACING = 320;
+
+/** A COYOTE line as the card shows it — BLK, read-only, identifiable so a person can move it. */
+function isClosedStatus(status: string | undefined): boolean {
+  if (!status) return false;
+  const upper = status.toUpperCase();
+  return upper.includes("CLOSED") || upper.includes("RESOLVED") || upper.includes("RETIRED");
+}
+
+function canonBlocker(item: AttributedItem | UnattributedItem, kind: UnattributedItem["kind"]): Item {
+  const detail = [item.qId, item.status].filter(Boolean).join(" · ");
+  return {
+    text: item.text,
+    done: isClosedStatus(item.status),
+    sec: detail ? `${item.sourceSection} · ${detail}` : item.sourceSection,
+    canon: true,
+    canonKind: kind,
+    sourceSection: item.sourceSection,
+    qId: item.qId,
+  };
+}
 
 function emptyNode(id: string, ref: string, shape: Shape, x: number, y: number, name: string, sec: string, origin: "canon" | "user"): BrainNode {
   return {
@@ -103,27 +123,12 @@ export function buildModel(
       seed?.sec ?? node.canonRefs[0]?.value ?? "",
       "canon",
     );
-    // §15's blockers and §00a's open questions, already extracted and attributed to an
-    // engine by the parser and carried through field_states. They were being published
-    // and then dropped on the floor here, so the map showed only hand-typed items and
-    // canon's own list of what is in the way was invisible.
-    //
-    // A question goes in TO DO rather than BLK on purpose: §00a is a queue of things
-    // awaiting an answer, not things declared to be blocking. Both are read-only.
+    // Every COYOTE line on this engine — §15 and §00a — is BLK. TO DO is typed into
+    // pm_items only; Shawn's operator, 2026-09-13.
     if (node.kind === "engine") {
       const target = nodes[node.nodeKey];
-      for (const b of node.blockers) {
-        target.blockers.push({ text: b.text, done: false, sec: b.sourceSection, canon: true });
-      }
-      for (const q of node.openQuestions) {
-        const prefix = [q.qId, q.status].filter(Boolean).join(" · ");
-        target.todos.push({
-          text: q.text,
-          done: (q.status ?? "").toUpperCase() === "CLOSED",
-          sec: prefix ? `${q.sourceSection} · ${prefix}` : q.sourceSection,
-          canon: true,
-        });
-      }
+      for (const b of node.blockers) target.blockers.push(canonBlocker(b, "blocker"));
+      for (const q of node.openQuestions) target.blockers.push(canonBlocker(q, "open question"));
     }
 
     order.push(node.nodeKey);
@@ -135,10 +140,13 @@ export function buildModel(
   // them from being renamed or deleted like a card someone added.
   //
   // Everything they hold is read-only for the same reason an engine's canon items are —
-  // there is no row to edit and the next publish would restore it. But the card itself
-  // is a real node with a real key, so a hand-typed to-do, a dropped file, a work state
-  // or a wire attaches to it exactly as it would to an engine.
+  // there is no row to edit and the next publish would restore it. A person-to-person
+  // move is the one exception: it writes pm_canon_assignments, never COYOTE, and the
+  // next build honours that instead of the default owner. The card itself is a real
+  // node with a real key, so a hand-typed to-do, a dropped file, a work state or a
+  // wire attaches to it exactly as it would to an engine.
   const loose = unattributedFrom(diagnostics);
+  const assignedTo = new Map((pm.canonAssignments ?? []).map((a) => [a.fingerprint, a.assignedTo]));
   for (const owner of OWNERS) {
     const saved = positions.get(owner.nodeKey);
     nodes[owner.nodeKey] = emptyNode(
@@ -151,22 +159,13 @@ export function buildModel(
       owner.sec,
       "canon",
     );
-    const target = nodes[owner.nodeKey];
-    for (const item of loose) {
-      if (item.kind !== owner.takes) continue;
-      const detail = [item.qId, item.status].filter(Boolean).join(" · ");
-      const entry: Item = {
-        text: item.text,
-        done: (item.status ?? "").toUpperCase() === "CLOSED",
-        sec: detail ? `${item.sourceSection} · ${detail}` : item.sourceSection,
-        canon: true,
-      };
-      // Same tab an engine's items go to, so BLK means §15 and TO DO means §00a
-      // everywhere on the map rather than meaning one thing per card class.
-      if (item.kind === "blocker") target.blockers.push(entry);
-      else target.todos.push(entry);
-    }
     order.push(owner.nodeKey);
+  }
+  for (const item of loose) {
+    const destKey = assignedTo.get(itemFingerprint(item)) ?? defaultOwnerKey(item.kind);
+    const target = nodes[destKey];
+    if (!target) continue;
+    target.blockers.push(canonBlocker(item, item.kind));
   }
 
   for (const pmNode of pm.nodes) {
@@ -175,6 +174,11 @@ export function buildModel(
     const y = saved?.y ?? UNPLACED_ROW_Y;
     if (!saved) unplaced += 1;
     nodes[pmNode.nodeKey] = emptyNode(pmNode.nodeKey, pmNode.displayRef, "box", x, y, pmNode.label, "", "user");
+    // Auto-assigned at creation time (see lib/brain.tsx's addNode) and persisted on
+    // pm_layout_positions.color — emptyNode always starts a card at null, so a PM node
+    // reads its real, already-assigned color back here rather than staying colorless
+    // on every reload.
+    nodes[pmNode.nodeKey].color = saved?.color ?? null;
     order.push(pmNode.nodeKey);
   }
 
@@ -203,9 +207,11 @@ export function buildModel(
     if (!item.nodeKey) continue;
     const target = nodes[item.nodeKey];
     if (!target) continue;
-    const entry: Item = { id: item.id, text: item.title, done: item.status === "done", sec: "" };
-    if (item.kind === "todo") target.todos.push(entry);
-    else target.blockers.push(entry);
+    // A blocker is COYOTE's, never a typed row. Shawn's operator, 2026-09-11 — BLK is
+    // parsed from §15 and read-only; the only move on it is asking the hub. A leftover
+    // pm_items blocker from before that ruling is not shown.
+    if (item.kind !== "todo") continue;
+    target.todos.push({ id: item.id, text: item.title, done: item.status === "done", sec: "" });
   }
 
   for (const file of pm.files) {

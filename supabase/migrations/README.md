@@ -180,3 +180,34 @@ anything that was already there.
 and it is hand-maintained. An entry missing here is indistinguishable from a migration
 that was never written. Add the "Applied and live" line in the same session you run the
 migration, not later.
+
+`0012_canon_assignments.sql` (2026-09-13) — `pm_canon_assignments`. A COYOTE line has no
+`pm_items.id`, so 0011 cannot record a Shawn ↔ Codeman move. This table keys on a
+fingerprint of section + qId + text and stores which owner card currently holds the line.
+Nothing here is written to COYOTE; TO DO stays typed `pm_items` only.
+
+**Applied and live** (2026-09-13, same project, `scripts/apply-migration.mjs`).
+
+`0013_ai_message_origin.sql` (2026-09-13) — `ai_messages.origin`, and `claim_ai_message()`
+takes an allowlist. 0008 made the bridge off-by-default and named the reason: the map has
+no authentication and the bridge reaches an agent holding Bash under
+`bypassPermissions`. That left one control for two situations. The local map and
+`salonx-mind-map.vercel.app` share this single queue, so turning the flag on to use the hub
+from Shawn's own machine also opened it to every anonymous visitor of the public page —
+which is why it had stayed off and the hub had stayed unusable. Each deployment now stamps
+`origin` from `BRIDGE_ORIGIN`, server-side, and the bridge claims only the origins in
+`COMMAND_BRIDGE_ORIGINS` (default `local`). A visitor cannot forge it: this table grants
+nothing to anon, so the only writer is a Server Action holding the service role, and the
+Action reads the value from the environment rather than the request. The zero-argument
+`claim_ai_message()` is dropped rather than left beside the new one — PostgREST would
+resolve an argument-less POST to it, which is the hole being closed. Pre-existing rows are
+marked `legacy` so no null case has to be treated as trusted.
+
+**This is a narrowing, not authentication.** `vercel` is deliberately absent from the
+allowlist. Adding it is the one change to make the day a login lands in front of the map.
+
+**Applied and live** (2026-09-13, same project, `scripts/apply-migration.mjs`).
+`scripts/verify-bridge-origin.ts` asserts it against the live queue: a public-origin
+message queued *before* a local one is still not the one claimed, the local one is, and
+widening the allowlist reaches the public one — so the filter, not the ordering, is what
+decides. Four consecutive runs, 5/5 each.

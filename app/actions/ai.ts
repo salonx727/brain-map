@@ -57,6 +57,9 @@ export async function applyAiProposalAction(proposal: AiProposal, approvedBy?: s
 
   switch (proposal.kind) {
     case "add_item": {
+      if (proposal.itemKind === "blocker") {
+        throw new Error("Cannot apply: blockers come from COYOTE, not from this map.");
+      }
       if (proposal.nodeKey) requireNode(proposal.nodeKey);
       await pmWriter.createItem(client, {
         kind: proposal.itemKind,

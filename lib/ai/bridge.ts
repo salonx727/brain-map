@@ -101,13 +101,31 @@ export async function latestOrNewThread(client: SupabaseClient): Promise<AiThrea
 }
 
 /**
+ * Which deployment this is, as far as the bridge is concerned.
+ *
+ * Read from the server environment and never from the request, because it is a permission
+ * boundary and not a preference: the bridge answers only the origins it trusts, so a value
+ * the browser could set would be no gate at all. Unset means unset — a deployment nobody
+ * configured is not one the bridge should be running Bash for, and `"unconfigured"` is not
+ * on any allowlist.
+ */
+export function originOfThisDeployment(): string {
+  return process.env.BRIDGE_ORIGIN?.trim() || "unconfigured";
+}
+
+/**
  * Queues a question. Returns immediately with the row in `pending` — the bridge may take
  * seconds or minutes, and a Server Action that waited would hit Vercel's function
  * timeout long before a real piece of work finished. The UI polls `readThread`.
+ *
+ * `origin` is passed in rather than read here so that the one decision that governs
+ * whether CommandOS will run this — the passphrase gate in lib/ai/brainGate.ts — is
+ * visible at the Server Action boundary alongside the check that makes it, instead of
+ * being inferred two files away.
  */
 export async function queueUserMessage(
   client: SupabaseClient,
-  input: { threadId: string; content: string; fileIds?: string[] },
+  input: { threadId: string; content: string; fileIds?: string[]; origin: string },
 ): Promise<AiMessage> {
   const { data, error } = await client
     .from("ai_messages")
@@ -117,6 +135,7 @@ export async function queueUserMessage(
       content: input.content,
       file_ids: input.fileIds ?? [],
       status: "pending",
+      origin: input.origin,
     })
     .select()
     .single();

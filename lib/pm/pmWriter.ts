@@ -11,8 +11,9 @@
 // canonical_* table — only publisher.ts does that, and this file doesn't import it.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ConnectionIntent, ConnectionRelation, PmFile, PmItem, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
+import type { ConnectionIntent, ConnectionRelation, PmCanonAssignment, PmFile, PmItem, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
 import { createRuling } from "@/lib/pm/rulingWriter";
+import { defaultOwnerKey, isOwnerKey, type OwnerKey } from "@/lib/owners";
 
 const BUCKET = "pm-files";
 
@@ -189,6 +190,111 @@ export async function updateItemTitle(client: SupabaseClient, id: string, title:
 export async function deleteItem(client: SupabaseClient, id: string): Promise<void> {
   const { error } = await client.from("pm_items").delete().eq("id", id);
   if (error) throw new Error(`deleteItem: ${error.message}`);
+}
+
+/** Resolves a fixed assignee name ("Shawn"/"Codeman") to its pm_people.id — never invented, never created on the fly here (0011 seeds both rows; a missing name is a real error, not a reason to mint one). */
+async function getPersonByName(client: SupabaseClient, name: string): Promise<PmPerson> {
+  const { data, error } = await client.from("pm_people").select("*").eq("name", name).single();
+  if (error) throw new Error(`getPersonByName("${name}"): ${error.message}`);
+  return { id: data.id, name: data.name, createdAt: data.created_at };
+}
+
+/**
+ * Pushes an existing to-do or blocker from one person's list to the other's — the
+ * reassignment feature. Never retypes the item: title, detail, kind, status, node_key,
+ * and every other field are untouched. This is exactly what pm_items.owner_id already
+ * exists for (0002); it sat unwritten after creation until this function.
+ *
+ * The history row (pm_item_assignments, 0011) is best-effort and deliberately separate
+ * from the ownership update: the reassignment itself must succeed or fail on its own, and
+ * a failure logging history a moment later must never look like "the reassignment did not
+ * happen" when it did.
+ */
+export async function reassignItem(client: SupabaseClient, input: { itemId: string; toOwnerName: string; changedBy?: string | null }): Promise<PmItem> {
+  const toOwner = await getPersonByName(client, input.toOwnerName);
+
+  const { data: before, error: beforeError } = await client
+    .from("pm_items")
+    .select("owner_id")
+    .eq("id", input.itemId)
+    .single();
+  if (beforeError) throw new Error(`reassignItem: ${beforeError.message}`);
+  const fromOwnerId: string | null = before.owner_id;
+
+  const { data, error } = await client
+    .from("pm_items")
+    .update({ owner_id: toOwner.id, updated_by: input.changedBy ?? null, updated_at: new Date().toISOString() })
+    .eq("id", input.itemId)
+    .select()
+    .single();
+  const row = unwrap({ data, error }, "reassignItem");
+
+  if (fromOwnerId !== toOwner.id) {
+    const { error: logError } = await client.from("pm_item_assignments").insert({
+      item_id: input.itemId,
+      from_owner_id: fromOwnerId,
+      to_owner_id: toOwner.id,
+      changed_by: input.changedBy ?? null,
+    });
+    if (logError) {
+      // The reassignment already landed above. Losing the history row is a smaller
+      // problem than pretending the reassignment failed because of it.
+      console.error(`reassignItem: history row not written: ${logError.message}`);
+    }
+  }
+
+  return itemFromRow(row);
+}
+
+/**
+ * Pushes a COYOTE-declared line from one owner card to the other. Never writes
+ * COYOTE, never mints a pm_items row — the line stays canon, the override lives
+ * here. Assigning back to the default owner deletes the row so the table only
+ * holds real moves.
+ */
+export async function assignCanonBlocker(
+  client: SupabaseClient,
+  input: {
+    fingerprint: string;
+    assignedTo: OwnerKey;
+    text: string;
+    sourceSection: string;
+    kind: PmCanonAssignment["kind"];
+  },
+): Promise<PmCanonAssignment | null> {
+  if (!input.fingerprint.trim()) throw new Error("assignCanonBlocker: fingerprint is required");
+  if (!isOwnerKey(input.assignedTo)) throw new Error(`assignCanonBlocker: "${input.assignedTo}" is not an owner card`);
+
+  if (input.assignedTo === defaultOwnerKey(input.kind)) {
+    const { error } = await client.from("pm_canon_assignments").delete().eq("fingerprint", input.fingerprint);
+    if (error) throw new Error(`assignCanonBlocker: ${error.message}`);
+    return null;
+  }
+
+  const { data, error } = await client
+    .from("pm_canon_assignments")
+    .upsert(
+      {
+        fingerprint: input.fingerprint,
+        assigned_to: input.assignedTo,
+        text: input.text,
+        source_section: input.sourceSection,
+        kind: input.kind,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "fingerprint" },
+    )
+    .select()
+    .single();
+  const row = unwrap({ data, error }, "assignCanonBlocker");
+  return {
+    fingerprint: row.fingerprint,
+    assignedTo: row.assigned_to as OwnerKey,
+    text: row.text,
+    sourceSection: row.source_section,
+    kind: row.kind as PmCanonAssignment["kind"],
+    updatedAt: row.updated_at,
+  };
 }
 
 function itemFromRow(row: {
@@ -397,14 +503,29 @@ export async function getOrCreateDefaultLayout(client: SupabaseClient, createdBy
   return { id: row.id, name: row.name, isDefault: row.is_default, createdBy: row.created_by, createdAt: row.created_at };
 }
 
-/** Position and colour only — never a lock flag; see pm.ts / 0002_pm_layer.sql. */
+/**
+ * Position and colour — never a lock flag; see pm.ts / 0002_pm_layer.sql.
+ *
+ * `color` is genuinely optional, not "optional, defaults to null": most callers (every
+ * plain drag) never pass one, and upsert sends only the columns present in the payload —
+ * omitting the key here means the drag's ON CONFLICT UPDATE never touches the color
+ * column, so a card's auto-assigned color survives every drag after the one that set it.
+ * Passing `color: null` explicitly is still how a caller clears it on purpose.
+ */
 export async function upsertLayoutPosition(client: SupabaseClient, input: { layoutId: string; nodeKey: string; x: number; y: number; color?: string | null; updatedBy?: string | null }): Promise<PmLayoutPosition> {
+  const row_: Record<string, unknown> = {
+    layout_id: input.layoutId,
+    node_key: input.nodeKey,
+    x: input.x,
+    y: input.y,
+    updated_by: input.updatedBy ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.color !== undefined) row_.color = input.color;
+
   const { data, error } = await client
     .from("pm_layout_positions")
-    .upsert(
-      { layout_id: input.layoutId, node_key: input.nodeKey, x: input.x, y: input.y, color: input.color ?? null, updated_by: input.updatedBy ?? null, updated_at: new Date().toISOString() },
-      { onConflict: "layout_id,node_key" },
-    )
+    .upsert(row_, { onConflict: "layout_id,node_key" })
     .select()
     .single();
   const row = unwrap({ data, error }, "upsertLayoutPosition");

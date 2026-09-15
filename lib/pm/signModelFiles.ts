@@ -2,7 +2,13 @@ import { createPmServiceClient } from "./serviceClient";
 import type { Model } from "@/lib/types";
 
 const BUCKET = "pm-files";
-const EXPIRES_SECONDS = 3600;
+/**
+ * A day, not the hour this was, because these URLs are now baked into a page that is
+ * cached and can be served stale. `/` sets `expireTime` to an hour, so the oldest render
+ * a visitor can be handed is an hour old — which left an hour-long signature with no
+ * margin at all. A day gives the served page 23 hours of headroom on its worst day.
+ */
+const EXPIRES_SECONDS = 24 * 60 * 60;
 
 /**
  * Fills in a viewable link for every stored image the model refers to.

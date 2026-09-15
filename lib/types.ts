@@ -24,11 +24,25 @@ export type Item = {
   done: boolean;
   sec: string;
   /**
-   * Declared by COYOTE (§15 blockers, §00a open questions) rather than typed here, so it
-   * is shown and never edited: it has no pm_items row to address, and the next publish
-   * would restore it anyway. Same posture as a canon wire — see adapter.ts.
+   * Declared by COYOTE. Every blocker is this; none are typed here. The only
+   * edits on a blocker are asking the hub and, on an owner card, moving it to
+   * the other person. TO DO never carries this: a to-do is always a pm_items row.
    */
   canon?: boolean;
+  /** Which COYOTE list this line came from. Used when recording a person-to-person move. */
+  canonKind?: "blocker" | "open question";
+  /**
+   * Raw § citation, without the qId/status suffix `sec` shows on the card, and the
+   * COYOTE register id where the line has one.
+   *
+   * Together with `text` these are the three parts of the line's fingerprint — the stable
+   * identity a Shawn ↔ Codeman move is recorded against. The fingerprint is rebuilt from
+   * them at the point of the move (`itemFingerprint`) rather than shipped: it is nothing
+   * but these fields concatenated, and sending it put a second copy of every blocker's
+   * text into the payload of a page that already carries a few hundred of them.
+   */
+  sourceSection?: string;
+  qId?: string;
 };
 
 /** A UI slot holds an image and nothing else. slot_index matters. */
@@ -59,7 +73,8 @@ export type BrainNode = {
   y: number;
   name: string;
   sec: string;
-  color: number | null;
+  /** A lib/pm/tribeColors.ts key ("01"-"15"), never a hex and never an array index — see that file's own comment for why. Persisted on pm_layout_positions.color; null means "not yet assigned" (every fixed canon engine ignores this and keeps its own NODE_HUES entry in Field3D.tsx regardless). */
+  color: string | null;
   state: NodeState;
   /** canon cards are never removable in one touch; user cards are */
   origin: "canon" | "user";

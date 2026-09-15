@@ -223,6 +223,20 @@ export interface PmItemAssignment {
   changedAt: string;
 }
 
+/**
+ * Current owner of a COYOTE-declared line after a person-to-person move.
+ * See pm_canon_assignments (0012). Fingerprint is the identity — there is no
+ * pm_items row to point at, and nothing here is written to COYOTE.
+ */
+export interface PmCanonAssignment {
+  fingerprint: string;
+  assignedTo: "owner:shawn" | "owner:codeman";
+  text: string;
+  sourceSection: string;
+  kind: "blocker" | "open question";
+  updatedAt: string;
+}
+
 /** Everything the PM layer knows about a set of node keys, in one batch. Never flattened with canonical data — see getPmLayer.ts. */
 export interface PmLayer {
   nodes: PmNode[];
@@ -235,4 +249,6 @@ export interface PmLayer {
   rulings: PmRuling[];
   /** The whole directory (Shawn, Codeman) — small enough to always load in full, never scoped by node key like everything else above. */
   people: PmPerson[];
+  /** Overrides for which owner card holds a COYOTE line. Unscoped — same reason as people. */
+  canonAssignments: PmCanonAssignment[];
 }

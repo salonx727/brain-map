@@ -653,6 +653,16 @@ body.wire3d #declare {
     transform: translateY(12px) scale(0.985);
   }
 }
+/* The boot mark breathes so a slow read looks like waiting rather than like a dead page. */
+@keyframes boot-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   #panel,
   #rosterCard {

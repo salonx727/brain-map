@@ -10,8 +10,10 @@
 import { revalidatePath } from "next/cache";
 import { createPmServiceClient } from "@/lib/pm/serviceClient";
 import * as pmWriter from "@/lib/pm/pmWriter";
+import { getItemsForNode } from "@/lib/graph/getPmLayer";
 import { getRulingsByIds, getRulingsForNodeKeys } from "@/lib/pm/rulingReader";
-import type { ConnectionIntent, ConnectionRelation, PmItem, PmNodeState, PmReference } from "@/lib/types/pm";
+import type { ConnectionIntent, ConnectionRelation, PmCanonAssignment, PmItem, PmNodeState, PmReference } from "@/lib/types/pm";
+import type { OwnerKey } from "@/lib/owners";
 
 export async function createItemAction(input: { kind: "todo" | "blocker"; title: string; nodeKey?: string | null; detail?: string; ownerId?: string | null; createdBy?: string | null }) {
   const client = createPmServiceClient();
@@ -38,6 +40,33 @@ export async function deleteItemAction(id: string) {
   const client = createPmServiceClient();
   await pmWriter.deleteItem(client, id);
   revalidatePath("/");
+}
+
+/** Pushes an existing to-do/blocker to the other person — never a retype, never a duplicate. See pmWriter.reassignItem's own header comment. */
+export async function reassignItemAction(itemId: string, toOwnerName: string, changedBy?: string | null) {
+  const client = createPmServiceClient();
+  const item = await pmWriter.reassignItem(client, { itemId, toOwnerName, changedBy });
+  revalidatePath("/");
+  return item;
+}
+
+/** Pushes a COYOTE line from one owner card to the other. Never writes COYOTE. */
+export async function assignCanonBlockerAction(input: {
+  fingerprint: string;
+  assignedTo: OwnerKey;
+  text: string;
+  sourceSection: string;
+  kind: PmCanonAssignment["kind"];
+}) {
+  const client = createPmServiceClient();
+  const row = await pmWriter.assignCanonBlocker(client, input);
+  revalidatePath("/");
+  return row;
+}
+
+/** Re-read one card's pm_items. The list on screen is replaced with this, not merged with leftover optimistic rows. */
+export async function listItemsForNodeAction(nodeKey: string) {
+  return getItemsForNode(nodeKey);
 }
 
 export async function createNoteAction(input: { kind: "note" | "decision"; body: string; nodeKey?: string | null; createdBy?: string | null }) {
@@ -126,10 +155,17 @@ export async function updateNodeLinkAction(
 export async function upsertLayoutPositionAction(input: { layoutId: string; nodeKey: string; x: number; y: number; color?: string | null; updatedBy?: string | null }) {
   const client = createPmServiceClient();
   const position = await pmWriter.upsertLayoutPosition(client, input);
-  // No revalidatePath here on purpose — position drags happen far more often than any
-  // other write in this file, and re-rendering the whole canonical+PM tree on every
-  // drag frame would be wasteful. The canvas already holds position in local state;
-  // this call just persists it.
+  // This used to skip revalidation, on the reasoning that the canvas already holds the
+  // position locally and a drag is the most frequent write here by a wide margin. That
+  // held while the page rendered per request — the next refresh read the new position
+  // from Supabase either way. It stopped holding when the surface moved behind the CDN:
+  // the row is saved, but a refresh would serve the cached page and the card would snap
+  // back to where it was, for up to 30 seconds, looking exactly like the drag was lost.
+  //
+  // Cheap enough to do here: this only marks the cached page stale. It fires once when the
+  // finger lifts, never per frame, and nothing regenerates until somebody asks for the
+  // page again.
+  revalidatePath("/");
   return position;
 }
 

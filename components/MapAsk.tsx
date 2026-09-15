@@ -13,7 +13,7 @@
 // proposal and writes exactly one row. There is deliberately no "approve all" — a single
 // control that applies a list is the autonomous-write path that shape exists to prevent.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { applyAiProposalAction, askAiHubAction } from "@/app/actions/ai";
 import type { AiProposal } from "@/lib/ai/types";
 
@@ -47,14 +47,18 @@ function readable(e: unknown): string {
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
 
-export default function MapAsk() {
-  const [question, setQuestion] = useState("");
+export default function MapAsk({ draft }: { draft?: string }) {
+  const [question, setQuestion] = useState(draft ?? "");
   const [apiKey, setApiKey] = useState("");
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [proposals, setProposals] = useState<AiProposal[]>([]);
   const [verdicts, setVerdicts] = useState<Record<number, Verdict>>({});
+
+  useEffect(() => {
+    if (draft) setQuestion(draft);
+  }, [draft]);
 
   const ready = question.trim() !== "" && !asking;
 

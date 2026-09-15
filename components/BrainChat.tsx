@@ -11,23 +11,32 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  brainGateStateAction,
   openBrainThreadAction,
   readBrainThreadAction,
   sendToBrainAction,
   startBrainThreadAction,
+  unlockBrainAction,
   uploadForBrainAction,
 } from "@/app/actions/aiBridge";
+import type { BrainGateState } from "@/app/actions/aiBridge";
 import type { AiMessage } from "@/lib/ai/bridge";
 
 const POLL_MS = 2000;
 
 type Attachment = { id: string; fileName: string };
 
-export default function BrainChat() {
+export default function BrainChat({ draft }: { draft?: string }) {
+  // null while we are still asking. Rendering the composer before the answer arrives
+  // would flash a usable panel at someone who is about to be asked for a passphrase.
+  const [gate, setGate] = useState<BrainGateState | null>(null);
+  const [passphrase, setPassphrase] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [gateError, setGateError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AiMessage[]>([]);
   const [stalled, setStalled] = useState(false);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(draft ?? "");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,13 +59,44 @@ export default function BrainChat() {
   }, []);
 
   useEffect(() => {
+    if (draft) setText(draft);
+  }, [draft]);
+
+  useEffect(() => {
+    brainGateStateAction()
+      .then(setGate)
+      .catch((e) => setGateError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  const unlocked = gate?.open ?? false;
+
+  useEffect(() => {
+    if (!unlocked) return;
     openBrainThreadAction()
       .then((id) => {
         setThreadId(id);
         return refresh(id);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [refresh]);
+  }, [unlocked, refresh]);
+
+  async function unlock() {
+    if (!passphrase.trim() || unlocking) return;
+    setUnlocking(true);
+    setGateError(null);
+    try {
+      if (await unlockBrainAction(passphrase)) {
+        setPassphrase("");
+        setGate({ required: true, open: true });
+      } else {
+        setGateError("That is not the passphrase.");
+      }
+    } catch (e) {
+      setGateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUnlocking(false);
+    }
+  }
 
   const waiting = messages.some((m) => m.status === "pending" || m.status === "running");
 
@@ -117,6 +157,58 @@ export default function BrainChat() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  // Below the last hook, so the early returns cannot change the hook order.
+  if (!gate) {
+    return (
+      <div className="panelCol">
+        <div className="none">…</div>
+      </div>
+    );
+  }
+
+  if (!gate.open) {
+    return (
+      <div className="panelCol">
+        <div className="chatlog">
+          <div className="none">
+            BRAIN is locked. This is not the map&apos;s own assistant — it is the same agent
+            Telegram talks to, running on Shawn&apos;s machine with the vault, the workspace and
+            a shell. The map stays open to everyone; this one door does not.
+          </div>
+        </div>
+        <div className="composer">
+          {gateError ? (
+            <div className="none" style={{ marginBottom: 8 }}>
+              {gateError}
+            </div>
+          ) : null}
+          <input
+            className="f"
+            style={{ width: "100%", fontFamily: "inherit" }}
+            type="password"
+            autoComplete="current-password"
+            placeholder="Passphrase"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") unlock();
+            }}
+          />
+          <div className="acts">
+            <button
+              className="act armed"
+              style={{ flex: 1, padding: 12, fontSize: 10 }}
+              disabled={!passphrase.trim() || unlocking}
+              onClick={unlock}
+            >
+              {unlocking ? "CHECKING…" : "UNLOCK"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -68,7 +68,41 @@ async function main(): Promise<number> {
   if (result.kind === "rejected") return 1;
 
   await retireCanonicalizedWires(client);
+  await dropCachedSurface(result.kind);
   return 0;
+}
+
+/**
+ * The map is served from the CDN and regenerated behind it, so publishing a snapshot into
+ * Supabase is no longer enough to put it on screen — the cached page has to be told it is
+ * out of date. Every edit made inside the app does this from its own Server Action; a
+ * publish from a terminal has no other way in, which is what /api/revalidate exists for.
+ *
+ * Never fails the sync. The publish above already committed, and a surface that catches up
+ * within the 30-second backstop instead of instantly is a smaller problem than a sync
+ * reported as failed when canon actually moved.
+ */
+async function dropCachedSurface(kind: string): Promise<void> {
+  if (kind === "no_op") {
+    console.log("Cache: left alone — nothing was published.");
+    return;
+  }
+  const base = process.env.MAP_URL ?? "https://salonx-mind-map.vercel.app";
+  const secret = process.env.REVALIDATE_SECRET;
+  if (!secret) {
+    console.warn("Cache: REVALIDATE_SECRET not set — the live map will catch up within 30s on its own.");
+    return;
+  }
+  try {
+    const response = await fetch(`${base}/api/revalidate`, {
+      method: "POST",
+      headers: { "x-revalidate-secret": secret },
+      signal: AbortSignal.timeout(10_000),
+    });
+    console.log(response.ok ? `Cache: dropped — ${base} will render the new snapshot on the next visit.` : `Cache: ${base} answered ${response.status}; it will catch up within 30s.`);
+  } catch (err) {
+    console.warn(`Cache: could not reach ${base} (${err instanceof Error ? err.message : String(err)}); it will catch up within 30s.`);
+  }
 }
 
 /**

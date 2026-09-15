@@ -5,12 +5,30 @@
 // future refactor can't accidentally pull a write credential into a read-only caller.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PmFile, PmItem, PmLayer, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
+import type { PmCanonAssignment, PmFile, PmItem, PmLayer, PmLayout, PmLayoutPosition, PmNode, PmNodeLink, PmNodeState, PmNote, PmPerson, PmReference } from "@/lib/types/pm";
 import { rulingRow } from "@/lib/pm/rulingReader";
 import { withRetry } from "@/lib/retry";
 
 function personRow(r: { id: string; name: string; created_at: string }): PmPerson {
   return { id: r.id, name: r.name, createdAt: r.created_at };
+}
+
+function canonAssignmentRow(r: {
+  fingerprint: string;
+  assigned_to: string;
+  text: string;
+  source_section: string;
+  kind: string;
+  updated_at: string;
+}): PmCanonAssignment {
+  return {
+    fingerprint: r.fingerprint,
+    assignedTo: r.assigned_to as PmCanonAssignment["assignedTo"],
+    text: r.text,
+    sourceSection: r.source_section,
+    kind: r.kind as PmCanonAssignment["kind"],
+    updatedAt: r.updated_at,
+  };
 }
 
 function nodeRow(r: {
@@ -162,12 +180,27 @@ export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: st
   // re-runs the whole read from scratch. Safe because every query inside is a read.
   return withRetry(async () => {
     if (nodeKeys.length === 0) {
-      const { data, error } = await client.from("pm_people").select("*");
-      if (error) throw new Error(`getPmLayerForNodeKeys: ${error.message}`);
-      return { nodes: [], items: [], notes: [], references: [], files: [], links: [], states: [], rulings: [], people: (data ?? []).map(personRow) };
+      const [people, assignments] = await Promise.all([
+        client.from("pm_people").select("*"),
+        client.from("pm_canon_assignments").select("*"),
+      ]);
+      if (people.error) throw new Error(`getPmLayerForNodeKeys: ${people.error.message}`);
+      if (assignments.error) throw new Error(`getPmLayerForNodeKeys: ${assignments.error.message}`);
+      return {
+        nodes: [],
+        items: [],
+        notes: [],
+        references: [],
+        files: [],
+        links: [],
+        states: [],
+        rulings: [],
+        people: (people.data ?? []).map(personRow),
+        canonAssignments: (assignments.data ?? []).map(canonAssignmentRow),
+      };
     }
 
-    const [nodesA, nodesB, items, notes, references, files, linksA, linksB, people] = await Promise.all([
+    const [nodesA, nodesB, items, notes, references, files, linksA, linksB, people, assignments] = await Promise.all([
       client.from("pm_nodes").select("*").in("node_key", nodeKeys),
       client.from("pm_nodes").select("*").in("parent_node_key", nodeKeys),
       client.from("pm_items").select("*").in("node_key", nodeKeys),
@@ -180,9 +213,10 @@ export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: st
       // (Shawn, Codeman) today, so every caller of this function gets it for free rather
       // than each one having to ask for it separately.
       client.from("pm_people").select("*"),
+      client.from("pm_canon_assignments").select("*"),
     ]);
 
-    for (const r of [nodesA, nodesB, items, notes, references, files, linksA, linksB, people]) {
+    for (const r of [nodesA, nodesB, items, notes, references, files, linksA, linksB, people, assignments]) {
       if (r.error) throw new Error(`getPmLayerForNodeKeys: ${r.error.message}`);
     }
 
@@ -226,6 +260,51 @@ export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: st
       files: (files.data ?? []).map(fileRow),
       links: [...linkById.values()],
       people: (people.data ?? []).map(personRow),
+      canonAssignments: (assignments.data ?? []).map(canonAssignmentRow),
+    };
+  });
+}
+
+/**
+ * The map's own read: every PM row, unscoped. Replaces "fetch every key, then
+ * `.in('node_key', thatList)` ten times" — that IN-list is what made Supabase
+ * return Gateway Timeout on refresh (2026-09-13), which Next.js turned into a
+ * 500 and the browser into "this site can't be reached."
+ *
+ * A whole-board `select *` is smaller on the wire than ten copies of the same
+ * key list, and it also picks up link rulings whose `node_key` is null, which
+ * the scoped reader could not see.
+ */
+export async function getWholePmLayer(client: SupabaseClient): Promise<PmLayer> {
+  return withRetry(async () => {
+    const [nodes, items, notes, references, files, links, states, rulings, people, assignments] = await Promise.all([
+      client.from("pm_nodes").select("*"),
+      client.from("pm_items").select("*"),
+      client.from("pm_notes").select("*"),
+      client.from("pm_references").select("*"),
+      client.from("pm_files").select("*"),
+      client.from("pm_node_links").select("*"),
+      client.from("pm_node_state").select("*"),
+      client.from("pm_rulings").select("*"),
+      client.from("pm_people").select("*"),
+      client.from("pm_canon_assignments").select("*"),
+    ]);
+
+    for (const r of [nodes, items, notes, references, files, links, states, rulings, people, assignments]) {
+      if (r.error) throw new Error(`getWholePmLayer: ${r.error.message}`);
+    }
+
+    return {
+      nodes: (nodes.data ?? []).map(nodeRow),
+      items: (items.data ?? []).map(itemRow),
+      notes: (notes.data ?? []).map(noteRow),
+      references: (references.data ?? []).map(referenceRow),
+      files: (files.data ?? []).map(fileRow),
+      links: (links.data ?? []).map(linkRow),
+      states: (states.data ?? []).map(nodeStateRow),
+      rulings: (rulings.data ?? []).map(rulingRow),
+      people: (people.data ?? []).map(personRow),
+      canonAssignments: (assignments.data ?? []).map(canonAssignmentRow),
     };
   });
 }

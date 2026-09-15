@@ -9,7 +9,8 @@
     "verify": "node scripts/verify.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "sync:coyote": "tsx --env-file=.env scripts/sync-coyote.ts"
+    "sync:coyote": "tsx --env-file=.env scripts/sync-coyote.ts",
+    "upload:prototype": "tsx --env-file=.env scripts/upload-prototype.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

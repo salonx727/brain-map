@@ -62,7 +62,7 @@ describe.skipIf(!hasCreds)("live Supabase canonical pipeline", () => {
   it("rejects an invalid candidate and leaves the active snapshot untouched", async () => {
     const before = await serviceClient
       .from("canonical_sync_state")
-      .select("source_hash, active_snapshot_id")
+      .select("source_hash, active_snapshot_id, sync_status, last_error")
       .eq("id", true)
       .limit(1);
 
@@ -95,6 +95,17 @@ describe.skipIf(!hasCreds)("live Supabase canonical pipeline", () => {
     expect(after.data?.[0]?.active_snapshot_id).toBe(before.data?.[0]?.active_snapshot_id);
     expect(after.data?.[0]?.source_hash).toBe(before.data?.[0]?.source_hash);
     expect(after.data?.[0]?.sync_status).toBe("failed");
+
+    // Put the row back the way it was found. There is one of these rows and it is the
+    // live one — `sync_status` is what anybody asking "is the map under the current
+    // COYOTE?" reads, and this test left it saying `failed` long after a perfectly good
+    // publish. It stayed that way for a day before an audit caught it (2026-09-13),
+    // because nothing else clears it: the no-op path does, but a successful publish that
+    // precedes a test run cannot un-fail itself afterwards.
+    await serviceClient
+      .from("canonical_sync_state")
+      .update({ sync_status: before.data?.[0]?.sync_status ?? "ok", last_error: before.data?.[0]?.last_error ?? null })
+      .eq("id", true);
   }, 20_000);
 
   it("RLS: the anon key can read canonical_nodes", async () => {
