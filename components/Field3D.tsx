@@ -98,6 +98,34 @@ function rgba(a: number) {
   return "rgba(255,138,20," + a + ")";
 }
 
+/* Per-node identity color, orbs only — wires, pulses and the blocked mark stay Baton
+   orange exactly as they were. Reference: Shawn's 2026-09-15 3D color mockup
+   (vault: Visuals/platform/2026-09-15-brain-3d-node-color-reference). Keyed by the
+   real node_key (§ nodeRegistry.ts), so this reads the live graph rather than a fixed
+   list — anything not named here (owner cards, PM/user-created cards, independent
+   cards) keeps today's single orange, unchanged. */
+const NODE_HUES: Record<string, string> = {
+  "engine:E01": "#B45CFF" /* GHOST NOTES — the hub */,
+  "engine:E02": "#FFD60A" /* EMPIRE */,
+  "engine:E03": "#10D982" /* MUSE */,
+  "engine:E04": "#14D4C3" /* SIGNAL */,
+  "engine:E05": "#FF2EBA" /* RAMP */,
+  "engine:E06": "#6366F1" /* THE INK */,
+  "engine:E07": "#FF3B5C" /* AFTERBURNER */,
+  "engine:E08": "#C6FF3D" /* SKINZ */,
+  "engine:E09": "#2541E8" /* THE DIAL */,
+  "engine:E10": "#C7CAD1" /* TAG */,
+  "engine:E11": "#2EB6FF" /* NEXUS — the sink */,
+  "intake:GATE": "#FF8A14",
+  "intake:BOOKING": "#FF8A14",
+};
+const DEFAULT_HUE = "#FF8A14"; /* Baton — today's color, for anything not named above */
+
+function hexA(hex: string, a: number) {
+  const n = parseInt(hex.slice(1), 16);
+  return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+}
+
 export default function Field3D({
   open,
   focus,
@@ -301,6 +329,7 @@ export default function Field3D({
         const rad = h.R * p.s * (1 + Math.sin(t * 1.6 + h.R) * 0.03);
         const blocked = d.blockers.length > 0 || d.state === "BLOCKED";
 
+        const hue = NODE_HUES[h.id] ?? DEFAULT_HUE;
         const g = ctx.createRadialGradient(
           p.x - rad * 0.4,
           p.y - rad * 0.42,
@@ -309,16 +338,16 @@ export default function Field3D({
           p.y,
           rad
         );
-        g.addColorStop(0, "rgba(255,255,255," + 0.4 * alpha + ")");
-        g.addColorStop(0.3, rgba(0.9 * alpha));
-        g.addColorStop(0.82, rgba(0.42 * alpha));
-        g.addColorStop(1, "rgba(0,0,0," + 0.55 * alpha + ")");
+        g.addColorStop(0, hexA("#FFFFFF", 0.4 * alpha));
+        g.addColorStop(0.3, hexA(hue, 0.9 * alpha));
+        g.addColorStop(0.82, hexA(hue, 0.42 * alpha));
+        g.addColorStop(1, hexA("#000000", 0.55 * alpha));
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(p.x, p.y, rad, 0, 6.2832);
         ctx.fill();
 
-        ctx.strokeStyle = rgba((h.loose ? 0.35 : 0.85) * alpha);
+        ctx.strokeStyle = hexA(hue, (h.loose ? 0.35 : 0.85) * alpha);
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(p.x, p.y, rad, 0, 6.2832);
