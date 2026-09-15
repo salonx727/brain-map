@@ -10,6 +10,7 @@ import { getLatestPrototypeVersion, listPrototypeVersions, signPrototypeUrl, upl
 export interface SignedPrototypeVersion {
   version: number;
   figmaUrl: string | null;
+  title: string | null;
   updatedAt: string | null;
   htmlUrl: string;
 }
@@ -24,6 +25,7 @@ export async function getEnginePrototypesAction(engineKey: string): Promise<{ la
     versions.map(async (v) => ({
       version: v.version,
       figmaUrl: v.figmaUrl,
+      title: v.title,
       updatedAt: v.updatedAt,
       htmlUrl: await signPrototypeUrl(client, v.path),
     })),

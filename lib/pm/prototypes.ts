@@ -13,12 +13,29 @@ export interface PrototypeVersion {
   version: number;
   path: string;
   figmaUrl: string | null;
+  /** The file's own <title>, e.g. "Salon X — MUSE KPI Drum v10 · canon 280" — separate
+   * from `version` on purpose. `version` is this system's own upload sequence (1, 2, 3…),
+   * reliable because nothing but Storage assigns it; a prototype's self-declared name
+   * ("v10", "v14.2") has been withdrawn, skipped and reused across the real history this
+   * app tracks, and is not something to hang the actual version number on. Shown
+   * alongside it instead, so "V1" here and "v10" in the file's own title are never
+   * mistaken for a disagreement (Salman, 2026-09-15). */
+  title: string | null;
   updatedAt: string | null;
 }
 
 function versionFromName(name: string): number | null {
   const m = VERSION_RE.exec(name);
   return m ? Number(m[1]) : null;
+}
+
+/** Best-effort only — a file with no <title>, or non-HTML content, yields null rather than a guess. */
+function titleFromHtml(bytes: ArrayBuffer | Blob | Buffer): string | null {
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(bytes)) {
+    const m = /<title>([^<]*)<\/title>/i.exec(bytes.toString("utf8", 0, Math.min(bytes.length, 4096)));
+    return m ? m[1].trim() || null : null;
+  }
+  return null;
 }
 
 /**
@@ -48,7 +65,8 @@ export async function listPrototypeVersions(client: SupabaseClient, engineKey: s
       // (or a future client library change) can't silently stop surfacing its link.
       const meta = info?.metadata as Record<string, unknown> | undefined;
       const figmaUrl = typeof meta?.figmaUrl === "string" ? meta.figmaUrl : typeof meta?.figma_url === "string" ? meta.figma_url : null;
-      return { engineKey, version, path, figmaUrl, updatedAt: entry.updated_at ?? null };
+      const title = typeof meta?.title === "string" ? meta.title : null;
+      return { engineKey, version, path, figmaUrl, title, updatedAt: entry.updated_at ?? null };
     }),
   );
   return out.sort((a, b) => b.version - a.version);
@@ -73,14 +91,19 @@ export async function uploadPrototypeVersion(
   const nextVersion = (existing[0]?.version ?? 0) + 1;
   const name = `v${nextVersion}.html`;
   const path = `${input.engineKey}/${name}`;
+  const title = titleFromHtml(input.bytes);
+
+  const metadata: Record<string, string> = {};
+  if (input.figmaUrl) metadata.figmaUrl = input.figmaUrl;
+  if (title) metadata.title = title;
 
   const { error } = await client.storage.from(BUCKET).upload(path, input.bytes, {
     contentType: input.contentType ?? "text/html",
-    metadata: input.figmaUrl ? { figmaUrl: input.figmaUrl } : undefined,
+    metadata: Object.keys(metadata).length ? metadata : undefined,
   });
   if (error) throw new Error(`uploadPrototypeVersion: ${error.message}`);
 
-  return { engineKey: input.engineKey, version: nextVersion, path, figmaUrl: input.figmaUrl ?? null, updatedAt: new Date().toISOString() };
+  return { engineKey: input.engineKey, version: nextVersion, path, figmaUrl: input.figmaUrl ?? null, title, updatedAt: new Date().toISOString() };
 }
 
 /** A short-lived link to view one version's HTML — never a permanent public URL, matching pm-files' own posture. */
