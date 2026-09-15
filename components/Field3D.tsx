@@ -137,7 +137,7 @@ export default function Field3D({
   setFocus: (id: string | null) => void;
   resetNonce: number;
 }) {
-  const { model, version } = useBrain();
+  const { model, version, isEmpty } = useBrain();
   const cvRef = useRef<HTMLCanvasElement>(null);
 
   const view = useRef({
@@ -312,6 +312,11 @@ export default function Field3D({
         .map((id) => {
           const P = pts.current[id];
           if (!P) return null;
+          // Same rule as the flat map: a card with no name and nothing on it yet is
+          // the moment right after ADD CARD, before anyone named it — not a card
+          // meant to be seen (Shawn, 2026-09-15: "they should not be displayed").
+          const n = model.nodes[id];
+          if (n && !n.name && isEmpty(id)) return null;
           return { id, p: project3(P, W, H), R: P.r, loose: P.loose } as Hit;
         })
         .filter((h): h is Hit => !!h)

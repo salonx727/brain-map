@@ -639,6 +639,14 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
           {model.order.map((id) => {
             const d = model.nodes[id];
             if (!d) return null;
+            // A card with no name and nothing on it yet is the moment right after ADD
+            // CARD, before anyone has named it — NodeCard prints "UNNAMED" as a literal,
+            // permanent label, not a placeholder, so closing that first panel without
+            // naming it left a bare "UNNAMED" card sitting on the shared board forever
+            // (Shawn, 2026-09-15: "they should not be displayed"). Hidden here, not
+            // deleted — it still exists, the moment it gets a name or any real content
+            // it renders again like any other card.
+            if (!d.name && brain.isEmpty(id)) return null;
             const unwired =
               wireMode && wireFocus
                 ? id !== wireFocus &&
