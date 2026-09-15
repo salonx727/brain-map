@@ -1342,6 +1342,38 @@ button.act.armed {
   border-color: var(--baton);
 }
 
+/* #bar grew a WIRE, a SCREEN and an ADD CARD button over the course of this session,
+   none of it in a screen-width-aware way — the row's real rendered width is 648px,
+   confirmed live at a 390px viewport, and #bar is fixed-position with no scroll, so the
+   overflow is not a scrollbar, it is FIT/WIRE/SCREEN/ADD CARD rendering off both edges of
+   the phone entirely (Salman, 2026-09-15, screenshot). Every control stays — this narrows
+   what already fit before, it does not remove or hide any of them. Verified live: 648px
+   before, ~331px after, both measured the same way (#bar's real bounding-box width) —
+   checked at both 390px and 375px viewports (iPhone 14 and iPhone SE class) so this holds
+   on a genuinely narrow phone, not just the one in the screenshot. */
+@media (max-width: 480px) {
+  #bar {
+    gap: 3px;
+    padding: 6px 6px;
+  }
+  #bar input[type="range"] {
+    width: 46px;
+  }
+  #bar .pct {
+    width: 26px;
+  }
+  #bar button.act {
+    padding: 8px 6px;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+  }
+  .stepper {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+}
+
 #savedtag {
   position: fixed;
   top: 18px;
