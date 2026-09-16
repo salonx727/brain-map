@@ -59,14 +59,23 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
   const flowLanes = useMemo<WalkLane[]>(() => (flowId ? lanes(graph, flowId) : []), [graph, flowId]);
   const main = useMemo(() => (flowId ? mainPath(graph, flowId) : []), [graph, flowId]);
   const flags = useMemo<WalkFlag[]>(() => (flowId ? validateFlow(graph, flowId) : []), [graph, flowId]);
+  // V1/V3/V4 target a screen id directly; V2/V5 target a touch point id (see derive.ts's
+  // validateFlow) — resolved back to that touch point's own screen here, once, so every
+  // caller can just ask "what's flagged on this screen" without knowing which rule keys
+  // on what. Without this resolution M4.T1's "check position" flag computes correctly but
+  // never appears anywhere a person can see it — ACCEPTANCE.md #14 needs it visible, not
+  // just derivable.
   const flagsByScreen = useMemo(() => {
+    const touchPointScreen = new Map(graph.touchPoints.map((t) => [t.id, t.screenId]));
     const m = new Map<string, WalkFlag[]>();
     for (const f of flags) {
-      if (!m.has(f.target)) m.set(f.target, []);
-      m.get(f.target)!.push(f);
+      const screenId = graph.screens.some((s) => s.id === f.target) ? f.target : touchPointScreen.get(f.target);
+      if (!screenId) continue;
+      if (!m.has(screenId)) m.set(screenId, []);
+      m.get(screenId)!.push(f);
     }
     return m;
-  }, [flags]);
+  }, [flags, graph]);
 
   const sequence = useMemo(() => {
     if (!flowId) return [];
@@ -480,7 +489,7 @@ function ChartView({
           </div>
         ))}
       </div>
-      <div className="walk-legend" style={{ display: "flex", justifyContent: "center", gap: 12 }}>
+      <div className="walk-legend" style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 }}>
         <button className="nav" aria-label="Previous" onClick={onPrev}>
           ‹
         </button>

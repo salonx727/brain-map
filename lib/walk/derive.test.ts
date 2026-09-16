@@ -83,4 +83,24 @@ describe("validateFlow", () => {
     const flags = validateFlow(withBrokenLink, "MUSE");
     expect(flags).toContainEqual(expect.objectContaining({ rule: "V5", target: "M6.T1" }));
   });
+
+  it("V4: a genuine main-path cycle (A→B→A) is flagged 'cycle', and mainPath stops rather than looping forever", () => {
+    const cyclic: WalkGraph = {
+      flows: [{ id: "CYCLE", nodeId: "test:cycle", title: "Cycle", startScreen: "A" }],
+      screens: [
+        { id: "A", flowId: "CYCLE", title: "A", currentVersion: null },
+        { id: "B", flowId: "CYCLE", title: "B", currentVersion: null },
+      ],
+      imageVersions: [],
+      touchPoints: [
+        { id: "A.T1", screenId: "A", n: 1, x: 50, y: 50, action: "to B", toScreen: "B", placedOn: null },
+        { id: "B.T1", screenId: "B", n: 1, x: 50, y: 50, action: "back to A", toScreen: "A", placedOn: null },
+      ],
+    };
+
+    expect(mainPath(cyclic, "CYCLE")).toEqual(["A", "B"]);
+
+    const flags = validateFlow(cyclic, "CYCLE");
+    expect(flags).toContainEqual(expect.objectContaining({ rule: "V4", reason: "cycle" }));
+  });
 });

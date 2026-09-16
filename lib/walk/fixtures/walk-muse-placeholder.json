@@ -1,9 +1,9 @@
 {
-  "_note": "PLACEHOLDER DATA — not canon. Real MUSE screen list pending from Shawn. IDs, titles and node IDs are stand-ins; map node_id to the real mind map node IDs.",
+  "_note": "PLACEHOLDER DATA — not canon. Real MUSE screen list pending from Shawn. Screen/version/touch-point IDs and titles are stand-ins; node_id values are real (engine:E03 = MUSE, owner:shawn = the empty-node test target) per Salman, 2026-09-16 — NODE_PAY stays a placeholder since no real Payment engine exists yet.",
   "flows": [
     {
       "id": "MUSE",
-      "node_id": "NODE_MUSE",
+      "node_id": "engine:E03",
       "title": "MUSE",
       "start_screen": "M1"
     },
@@ -220,16 +220,16 @@
   ],
   "nodes_placeholder": [
     {
-      "id": "NODE_MUSE",
-      "label": "MUSE"
+      "id": "engine:E03",
+      "label": "MUSE (real canonical node_key)"
     },
     {
       "id": "NODE_PAY",
-      "label": "Payment (placeholder)"
+      "label": "Payment (placeholder — no real Payment engine yet)"
     },
     {
-      "id": "NODE_EMPTY",
-      "label": "Node with no flows (placeholder)"
+      "id": "owner:shawn",
+      "label": "Shawn's owner card — real, used as the empty-node (no flows) test target"
     }
   ],
   "_expected": {
@@ -284,13 +284,13 @@
       }
     ],
     "flowsForNode": {
-      "NODE_MUSE": [
+      "engine:E03": [
         "MUSE"
       ],
       "NODE_PAY": [
         "PAY"
       ],
-      "NODE_EMPTY": []
+      "owner:shawn": []
     }
   }
 }

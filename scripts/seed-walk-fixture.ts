@@ -10,12 +10,69 @@
 //     rerun's upsert cannot clobber a value this script itself set moments earlier.
 //
 // Usage: tsx --env-file=.env scripts/seed-walk-fixture.ts
+//        tsx --env-file=.env scripts/seed-walk-fixture.ts --remove
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createPmServiceClient } from "../lib/pm/serviceClient";
 import fixture from "../lib/walk/fixtures/walk-muse-placeholder.json";
 
+/**
+ * Best-effort teardown, not a guaranteed one — walk_image_version is immutable
+ * (0016_walk.sql's trigger rejects DELETE the same as UPDATE, unconditionally, no
+ * service-role exception), and walk_screen.id is referenced by walk_image_version.screen_id,
+ * so once a screen has ANY version row — even a seeded placeholder with null links — neither
+ * the screen nor its flow can ever be deleted again either, by the same FK. Touch points
+ * carry no such constraint and are removed first, always. Reports what it actually managed
+ * rather than pretending success — a script that swallowed these errors would be lying
+ * about the one guarantee ACCEPTANCE.md #18 exists to make real.
+ */
+async function remove(client: SupabaseClient): Promise<number> {
+  const { error: tpError, count: tpCount } = await client
+    .from("walk_touch_point")
+    .delete({ count: "exact" })
+    .in("id", fixture.touch_points.map((t) => t.id));
+  if (tpError) throw new Error(`seed-walk-fixture --remove: touch points: ${tpError.message}`);
+  console.log(`Removed ${tpCount ?? 0} touch points.`);
+
+  const { error: versionError, count: versionCount } = await client
+    .from("walk_image_version")
+    .delete({ count: "exact" })
+    .in("id", fixture.image_versions.map((v) => v.id));
+  if (versionError) {
+    console.log(`walk_image_version rows kept — immutable by design (ACCEPTANCE.md #18): ${versionError.message}`);
+  } else {
+    console.log(`Removed ${versionCount ?? 0} image versions.`);
+  }
+
+  const { error: screenError, count: screenCount } = await client
+    .from("walk_screen")
+    .delete({ count: "exact" })
+    .in("id", fixture.screens.map((s) => s.id));
+  if (screenError) {
+    console.log(`walk_screen rows kept — still referenced by their (immutable) image versions: ${screenError.message}`);
+  } else {
+    console.log(`Removed ${screenCount ?? 0} screens.`);
+  }
+
+  const { error: flowError, count: flowCount } = await client
+    .from("walk_flow")
+    .delete({ count: "exact" })
+    .in("id", fixture.flows.map((f) => f.id));
+  if (flowError) {
+    console.log(`walk_flow rows kept — still referenced by their screens: ${flowError.message}`);
+  } else {
+    console.log(`Removed ${flowCount ?? 0} flows.`);
+  }
+
+  return 0;
+}
+
 async function main(): Promise<number> {
   const client = createPmServiceClient();
+
+  if (process.argv.includes("--remove")) {
+    return remove(client);
+  }
 
   const { error: flowError } = await client
     .from("walk_flow")
