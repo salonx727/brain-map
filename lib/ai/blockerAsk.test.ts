@@ -17,7 +17,7 @@ function card(over: Partial<BrainNode> = {}): BrainNode {
     subs: [],
     todos: [],
     blockers: [],
-    screens: [null, null, null, null],
+    screens: [],
     drops: [],
     ...over,
   };

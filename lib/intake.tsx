@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef } from "react";
 import { useBrain } from "./brain";
-import { getSignedFileUrlAction, setUiSlotAction, uploadFileAction } from "@/app/actions/pm";
+import { addUiScreenshotAction, getSignedFileUrlAction, uploadFileAction } from "@/app/actions/pm";
 import type { Drop, Shot } from "./types";
 
 /** Where a pick lands: on the open card, or in the unrouted pile. */
@@ -12,7 +12,7 @@ export type Intake = {
   pickPhotos: (to: Dest) => void;
   pickCamera: (to: Dest) => void;
   pickFiles: (to: Dest) => void;
-  pickSlot: (index: number) => void;
+  pickScreenshot: () => void;
 };
 
 const IntakeCtx = createContext<Intake | null>(null);
@@ -46,11 +46,10 @@ export function IntakeProvider({
   const photos = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
   const files = useRef<HTMLInputElement>(null);
-  const slot = useRef<HTMLInputElement>(null);
+  const screenshot = useRef<HTMLInputElement>(null);
 
   /* the target is decided when the picker is opened, not when it returns */
   const dest = useRef<Dest>("node");
-  const slotIndex = useRef<number>(0);
   const openIdRef = useRef<string | null>(openId);
   openIdRef.current = openId;
 
@@ -86,8 +85,8 @@ export function IntakeProvider({
     [model, bump, persist, onUnrouted, addFiles],
   );
 
-  const takeSlot = useCallback(
-    (file: File | undefined, index: number) => {
+  const takeScreenshot = useCallback(
+    (file: File | undefined) => {
       const id = openIdRef.current;
       if (!id || !file) return;
       const d = model.nodes[id];
@@ -99,14 +98,12 @@ export function IntakeProvider({
           const form = new FormData();
           form.set("file", file);
           form.set("nodeKey", id);
-          form.set("slotIndex", String(index));
-          const record = await setUiSlotAction(form);
+          const record = await addUiScreenshotAction(form);
           const url = await getSignedFileUrlAction(record.storagePath);
-          const arr = d.screens.slice();
-          while (arr.length < 4) arr.push(null);
           const shot: Shot = { id: record.id, storagePath: record.storagePath, name: record.fileName, data: url };
-          arr[index] = shot;
-          d.screens = arr;
+          // Appended, never placed at an index — addUiScreenshotAction already decided
+          // this file's order server-side; here it just always goes last.
+          d.screens = [...d.screens, shot];
           bump();
         },
         () => {
@@ -131,9 +128,8 @@ export function IntakeProvider({
         dest.current = to;
         files.current?.click();
       },
-      pickSlot: (index) => {
-        slotIndex.current = index;
-        slot.current?.click();
+      pickScreenshot: () => {
+        screenshot.current?.click();
       },
     }),
     [],
@@ -183,12 +179,12 @@ export function IntakeProvider({
         }}
       />
       <input
-        ref={slot}
+        ref={screenshot}
         type="file"
         accept="image/*"
         style={hidden}
         onChange={(e) => {
-          takeSlot(e.target.files?.[0], slotIndex.current);
+          takeScreenshot(e.target.files?.[0]);
           e.target.value = "";
         }}
       />

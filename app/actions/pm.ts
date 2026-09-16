@@ -216,30 +216,23 @@ export async function uploadFileAction(formData: FormData) {
   return record;
 }
 
-/** One of the four fixed UI-tab image slots (0–3) — real Storage upload, never a session-only data URL. */
-export async function setUiSlotAction(formData: FormData) {
+/** Adds one more UI screenshot for a node — real Storage upload, never a session-only data URL. Unbounded: see addUiScreenshot's own comment for what replaced the old 4-slot cap. */
+export async function addUiScreenshotAction(formData: FormData) {
   const file = formData.get("file");
-  if (!(file instanceof Blob)) throw new Error("setUiSlotAction: no file provided");
+  if (!(file instanceof Blob)) throw new Error("addUiScreenshotAction: no file provided");
   const nodeKey = formData.get("nodeKey") as string | null;
-  if (!nodeKey) throw new Error("setUiSlotAction: nodeKey is required");
-  const slotIndex = Number(formData.get("slotIndex"));
+  if (!nodeKey) throw new Error("addUiScreenshotAction: nodeKey is required");
   const createdBy = (formData.get("createdBy") as string | null) || null;
   const fileName = file instanceof File ? file.name : "upload";
 
   const client = createPmServiceClient();
   const bytes = await file.arrayBuffer();
-  const record = await pmWriter.setUiSlot(client, { nodeKey, slotIndex, fileName, contentType: file.type || null, bytes, createdBy });
+  const record = await pmWriter.addUiScreenshot(client, { nodeKey, fileName, contentType: file.type || null, bytes, createdBy });
   revalidatePath("/");
   return record;
 }
 
-export async function clearUiSlotAction(nodeKey: string, slotIndex: number) {
-  const client = createPmServiceClient();
-  await pmWriter.clearUiSlot(client, { nodeKey, slotIndex });
-  revalidatePath("/");
-}
-
-/** Removes an ordinary DROP-tab file (never a UI slot — see clearUiSlotAction for that). */
+/** Removes a file by id — an ordinary DROP-tab file or a UI screenshot, neither of which has a fixed slot identity worth deleting any other way. */
 export async function deleteFileAction(fileId: string) {
   const client = createPmServiceClient();
   await pmWriter.deleteFile(client, fileId);

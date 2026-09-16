@@ -634,6 +634,35 @@ body.wire3d #declare {
 #scrim.open {
   display: flex;
 }
+
+/* VIEW ALL — every UI screenshot, in order, id shown. Same recipe as #scrim/#panel (this
+   card already sits inside one), just a class instead of an id since it stacks on top of
+   an already-open panel rather than replacing it — an id already in use on the page
+   would apply the same rule to both elements, which happens to look right but is the
+   wrong reason for it to. */
+.screens-modal-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 8, 8, 0.72);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.screens-modal-card {
+  width: 470px;
+  max-width: 100%;
+  max-height: 88vh;
+  overflow: auto;
+  background: rgba(12, 12, 12, 0.86);
+  border: 1px solid var(--baton);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  animation: rise 200ms var(--ease);
+}
 #panel {
   width: 470px;
   max-width: 100%;

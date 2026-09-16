@@ -14,7 +14,6 @@ import {
   totalItems,
 } from "@/lib/graph";
 import {
-  clearUiSlotAction,
   deleteFileAction,
   deleteNodeLinkAction,
   proposeConnectionAction,
@@ -103,6 +102,8 @@ export default function ControlPanel({
   const [over, setOver] = useState(false);
   const [delArmed, setDelArmed] = useState(false);
   const delTimer = useRef<number | null>(null);
+  /** The full-sequence view for UI screenshots beyond the first 4 on the card face. */
+  const [screensOpen, setScreensOpen] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -208,7 +209,7 @@ export default function ControlPanel({
   } else if (tab === 3) {
     tally = d.drops.length + " FILED";
   } else if (tab === 0) {
-    tally = c[0] + " OF 4 SLOTS";
+    tally = c[0] + (c[0] === 1 ? " SCREENSHOT" : " SCREENSHOTS");
   }
 
   return (
@@ -354,7 +355,8 @@ export default function ControlPanel({
 
       {isEngine && tab === PROTOTYPE_TAB && engineKey ? <PrototypePanel engineKey={engineKey} /> : null}
 
-      {/* UI slots — a fixed array of 4 where slot_index matters, images only */}
+      {/* UI screenshots — unbounded, oldest first (see types.ts's screens field comment).
+          Only the first 4 render here; VIEW ALL reaches the rest. */}
       {tab === 0 ? (
         <div className="grid sect">
           {[0, 1, 2, 3].map((idx) => {
@@ -370,13 +372,11 @@ export default function ControlPanel({
                       aria-label="Remove image"
                       onClick={() => {
                         const prior = d.screens.slice();
-                        const arr = d.screens.slice();
-                        arr[idx] = null;
-                        while (arr.length && arr[arr.length - 1] === null) arr.pop();
-                        d.screens = arr;
+                        d.screens = d.screens.filter((s) => s.id !== shot.id);
                         bump();
+                        if (!shot.id) return;
                         persist(
-                          () => clearUiSlotAction(d.id, idx),
+                          () => deleteFileAction(shot.id as string),
                           () => {
                             d.screens = prior;
                           },
@@ -390,15 +390,76 @@ export default function ControlPanel({
                         (shot.w ? "  " + shot.w + "×" + shot.h : "")}
                     </div>
                   </>
-                ) : (
-                  <button className="empty" onClick={() => intake.pickSlot(idx)}>
+                ) : idx === d.screens.length ? (
+                  <button className="empty" onClick={() => intake.pickScreenshot()}>
                     <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
                     <span>{"UI SLOT " + (idx + 1)}</span>
                   </button>
+                ) : (
+                  <div className="empty" aria-hidden="true" />
                 )}
               </div>
             );
           })}
+          {d.screens.length >= 4 ? (
+            <button className="empty" onClick={() => intake.pickScreenshot()}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+              <span>ADD SCREENSHOT</span>
+            </button>
+          ) : null}
+          {d.screens.length > 4 ? (
+            <button className="empty" onClick={() => setScreensOpen(true)}>
+              <span>{"VIEW ALL (" + d.screens.length + ")"}</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {screensOpen ? (
+        <div
+          className="screens-modal-scrim"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setScreensOpen(false);
+          }}
+        >
+          <div className="screens-modal-card">
+            <div className="head">
+              <div className="title">{"ALL SCREENSHOTS · " + d.screens.length}</div>
+              <button className="dismiss" aria-label="Dismiss" onClick={() => setScreensOpen(false)}>
+                <span />
+              </button>
+            </div>
+            {d.screens.map((shot, i) => (
+              <div className="item file" key={shot.id ?? i}>
+                {shot.data ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="thumb" src={shot.data} alt={shot.name || shot.id} />
+                ) : null}
+                <div style={{ flex: 1 }}>
+                  <div>{shot.name || "Untitled"}</div>
+                  {shot.id ? <div className="meta">{"ID " + shot.id}</div> : null}
+                </div>
+                <button
+                  className="minus"
+                  aria-label="Remove"
+                  onClick={() => {
+                    const prior = d.screens.slice();
+                    d.screens = d.screens.filter((s) => s.id !== shot.id);
+                    bump();
+                    if (!shot.id) return;
+                    persist(
+                      () => deleteFileAction(shot.id as string),
+                      () => {
+                        d.screens = prior;
+                      },
+                    );
+                  }}
+                >
+                  <span />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 

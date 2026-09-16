@@ -249,10 +249,10 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
     expect(stillUnsorted.some((f) => f.id === file.id)).toBe(false);
   }, 20_000);
 
-  it("fills a UI slot with a real Storage-backed upload (never a session-only data URL), and the UI chip counts filled slots only", async () => {
+  it("adds a UI screenshot with a real Storage-backed upload (never a session-only data URL), and the UI chip counts every screenshot", async () => {
     const bytes = Buffer.from(`${TEST_MARKER}-slot-image`, "utf-8");
-    const file = await pmWriter.setUiSlot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, slotIndex: 2, fileName: `${TEST_MARKER}-slot2.jpg`, contentType: "image/jpeg", bytes });
-    expect(file.slotIndex).toBe(2);
+    const file = await pmWriter.addUiScreenshot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, fileName: `${TEST_MARKER}-slot2.jpg`, contentType: "image/jpeg", bytes });
+    expect(file.slotIndex).not.toBeNull();
     expect(file.nodeKey).toBe(CANONICAL_NODE_KEY);
 
     const signedUrl = await pmWriter.getSignedFileUrl(serviceClient, file.storagePath);
@@ -263,20 +263,21 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
     expect(slotFiles.some((f) => f.id === file.id)).toBe(true);
   }, 20_000);
 
-  it("setting a slot that's already filled replaces the old file, never leaving two", async () => {
-    const first = await pmWriter.setUiSlot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, slotIndex: 3, fileName: `${TEST_MARKER}-first.jpg`, contentType: "image/jpeg", bytes: Buffer.from("a") });
-    const second = await pmWriter.setUiSlot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, slotIndex: 3, fileName: `${TEST_MARKER}-second.jpg`, contentType: "image/jpeg", bytes: Buffer.from("b") });
+  it("adding a second screenshot appends after the first, never replacing it", async () => {
+    const first = await pmWriter.addUiScreenshot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, fileName: `${TEST_MARKER}-first.jpg`, contentType: "image/jpeg", bytes: Buffer.from("a") });
+    const second = await pmWriter.addUiScreenshot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, fileName: `${TEST_MARKER}-second.jpg`, contentType: "image/jpeg", bytes: Buffer.from("b") });
     expect(second.id).not.toBe(first.id);
+    expect(second.slotIndex).toBeGreaterThan(first.slotIndex as number);
 
     const layer = await getPmLayerForNodeKeys(anonClient, [CANONICAL_NODE_KEY]);
-    const slot3 = layer.files.filter((f) => f.slotIndex === 3);
-    expect(slot3).toHaveLength(1);
-    expect(slot3[0].id).toBe(second.id);
+    const ids = layer.files.filter((f) => f.slotIndex !== null).map((f) => f.id);
+    expect(ids).toContain(first.id);
+    expect(ids).toContain(second.id);
   }, 20_000);
 
-  it("clears a UI slot, removing both the row and the Storage object", async () => {
-    const file = await pmWriter.setUiSlot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, slotIndex: 1, fileName: `${TEST_MARKER}-clearme.jpg`, contentType: "image/jpeg", bytes: Buffer.from("x") });
-    await pmWriter.clearUiSlot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, slotIndex: 1 });
+  it("deletes a UI screenshot by id, removing both the row and the Storage object", async () => {
+    const file = await pmWriter.addUiScreenshot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, fileName: `${TEST_MARKER}-clearme.jpg`, contentType: "image/jpeg", bytes: Buffer.from("x") });
+    await pmWriter.deleteFile(serviceClient, file.id);
 
     const layer = await getPmLayerForNodeKeys(anonClient, [CANONICAL_NODE_KEY]);
     expect(layer.files.some((f) => f.id === file.id)).toBe(false);
@@ -284,10 +285,6 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
     // Storage object is gone too — Supabase validates existence at sign time, so even
     // requesting a signed URL for it now fails, not just the eventual download.
     await expect(pmWriter.getSignedFileUrl(serviceClient, file.storagePath)).rejects.toThrow(/not found/i);
-  }, 20_000);
-
-  it("clearing an already-empty slot is a safe no-op", async () => {
-    await expect(pmWriter.clearUiSlot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, slotIndex: 0 })).resolves.toBeUndefined();
   }, 20_000);
 
   it("DROP intake: a file uploaded with a nodeKey attaches directly to that node — no UNSORTED detour needed for a targeted drop", async () => {

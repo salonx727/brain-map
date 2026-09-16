@@ -372,7 +372,7 @@ function byteLength(bytes: Buffer | Blob | ArrayBuffer): number | null {
  * confirms — an orphaned Storage object with no DB row is harmless; a DB row pointing at
  * a missing object would render as broken UI, so this order is deliberate. `nodeKey:
  * null` records an UNSORTED drop. `slotIndex` is always null here — an ordinary
- * DROP-tab file; use setUiSlot for one of the four fixed UI-tab image slots.
+ * DROP-tab file; use addUiScreenshot for a UI-tab image instead.
  */
 export async function uploadFile(
   client: SupabaseClient,
@@ -411,28 +411,37 @@ export async function assignFileToNode(client: SupabaseClient, fileId: string, n
 }
 
 /**
- * Fills one of the four fixed UI-tab image slots (0–3) for a node — real Storage
- * upload, never a session-only data URL (the reference's own intake notes state plainly
- * that its data-URL behavior is intake, not storage; this is storage). Deletes any
- * existing file already occupying that slot first — both its Storage object and its
- * row — so a slot always holds exactly one file, matching "a filled slot shows the
- * image... with a minus to clear it" from the reference's own intake notes.
+ * Adds one more UI screenshot for a node — real Storage upload, never a session-only
+ * data URL. Purely additive: was setUiSlot, which cleared whatever already occupied a
+ * fixed slot 0–3 before writing; Salman's ruling, 2026-09-15, removed the 4-item cap and
+ * the replace-on-add behavior together, since a cap and "adding evicts the oldest" are
+ * the same constraint seen from two sides. slot_index is now just this file's position
+ * in an unbounded, append-only order — the next integer after whatever the node already
+ * has, never a value the caller chooses, so two concurrent uploads can't both claim the
+ * same position.
  */
-export async function setUiSlot(
+export async function addUiScreenshot(
   client: SupabaseClient,
-  input: { nodeKey: string; slotIndex: number; fileName: string; contentType: string | null; bytes: Buffer | Blob | ArrayBuffer; createdBy?: string | null },
+  input: { nodeKey: string; fileName: string; contentType: string | null; bytes: Buffer | Blob | ArrayBuffer; createdBy?: string | null },
 ): Promise<PmFile> {
-  if (input.slotIndex < 0 || input.slotIndex > 3) throw new Error(`setUiSlot: slotIndex must be 0-3, got ${input.slotIndex}`);
-  await clearUiSlot(client, { nodeKey: input.nodeKey, slotIndex: input.slotIndex });
+  const { data: existing, error: selectError } = await client
+    .from("pm_files")
+    .select("slot_index")
+    .eq("node_key", input.nodeKey)
+    .not("slot_index", "is", null)
+    .order("slot_index", { ascending: false })
+    .limit(1);
+  if (selectError) throw new Error(`addUiScreenshot: ${selectError.message}`);
+  const nextIndex = (existing?.[0]?.slot_index ?? -1) + 1;
 
   const safeName = input.fileName.replace(/[^\w.\-]/g, "_");
-  const storagePath = `${input.nodeKey}/ui-slot-${input.slotIndex}-${crypto.randomUUID()}_${safeName}`;
+  const storagePath = `${input.nodeKey}/ui-slot-${nextIndex}-${crypto.randomUUID()}_${safeName}`;
 
   const { error: uploadError } = await client.storage.from(BUCKET).upload(storagePath, input.bytes, {
     contentType: input.contentType ?? undefined,
     upsert: false,
   });
-  if (uploadError) throw new Error(`setUiSlot: storage upload failed: ${uploadError.message}`);
+  if (uploadError) throw new Error(`addUiScreenshot: storage upload failed: ${uploadError.message}`);
 
   const { data, error } = await client
     .from("pm_files")
@@ -442,36 +451,16 @@ export async function setUiSlot(
       file_name: input.fileName,
       content_type: input.contentType,
       size_bytes: byteLength(input.bytes),
-      slot_index: input.slotIndex,
+      slot_index: nextIndex,
       created_by: input.createdBy ?? null,
     })
     .select()
     .single();
-  const row = unwrap({ data, error }, "setUiSlot (metadata insert)");
+  const row = unwrap({ data, error }, "addUiScreenshot (metadata insert)");
   return fileFromRow(row);
 }
 
-/** Empties a UI slot — removes both the Storage object and the row. A no-op (never throws) if the slot was already empty. */
-export async function clearUiSlot(client: SupabaseClient, input: { nodeKey: string; slotIndex: number }): Promise<void> {
-  const { data: existing, error: selectError } = await client.from("pm_files").select("id, storage_path").eq("node_key", input.nodeKey).eq("slot_index", input.slotIndex);
-  if (selectError) throw new Error(`clearUiSlot: ${selectError.message}`);
-  if (!existing || existing.length === 0) return;
-
-  const paths = existing.map((r) => r.storage_path);
-  const { error: removeError } = await client.storage.from(BUCKET).remove(paths);
-  if (removeError) throw new Error(`clearUiSlot: storage remove failed: ${removeError.message}`);
-
-  const { error: deleteError } = await client
-    .from("pm_files")
-    .delete()
-    .in(
-      "id",
-      existing.map((r) => r.id),
-    );
-  if (deleteError) throw new Error(`clearUiSlot: row delete failed: ${deleteError.message}`);
-}
-
-/** Removes an ordinary DROP-tab file — both the Storage object and the pm_files row. Same shape as clearUiSlot, keyed by id instead of (nodeKey, slotIndex) since a DROP file has no slot. */
+/** Removes a file — both the Storage object and the pm_files row — keyed by id alone. Used for an ordinary DROP-tab file and, since 2026-09-15, for a UI screenshot too: neither has a fixed slot identity worth deleting by (nodeKey, slotIndex) instead of just its own id. */
 export async function deleteFile(client: SupabaseClient, fileId: string): Promise<void> {
   const { data: existing, error: selectError } = await client.from("pm_files").select("storage_path").eq("id", fileId).single();
   if (selectError) throw new Error(`deleteFile: ${selectError.message}`);

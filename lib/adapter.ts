@@ -84,7 +84,7 @@ function emptyNode(id: string, ref: string, shape: Shape, x: number, y: number, 
     subs: [],
     todos: [],
     blockers: [],
-    screens: [null, null, null, null],
+    screens: [],
     drops: [],
   };
 }
@@ -220,9 +220,12 @@ export function buildModel(
     if (!target) continue;
     // `data` stays null: bytes live in private Storage and are fetched through a signed
     // URL when something actually needs to show them, never inlined into the model.
-    if (file.slotIndex !== null && file.slotIndex >= 0 && file.slotIndex <= 3) {
+    // slot_index is an order position now, not a bounded slot identity — no upper bound
+    // — assigned sparsely here (a deleted middle one leaves a gap) and compacted below,
+    // once every file for every node has been placed, into a plain ordered array.
+    if (file.slotIndex !== null && file.slotIndex >= 0) {
       const shot: Shot = { id: file.id, storagePath: file.storagePath, name: file.fileName, data: null };
-      target.screens[file.slotIndex] = shot;
+      (target.screens as (Shot | undefined)[])[file.slotIndex] = shot;
     } else {
       const drop: Drop = {
         id: file.id,
@@ -234,6 +237,13 @@ export function buildModel(
       };
       target.drops.push(drop);
     }
+  }
+
+  // Compact every node's sparse assignment above into a plain ordered array — array
+  // iteration over numeric indices is already ascending, so filtering out the gaps left
+  // by a deleted middle screenshot is the entire job; nothing needs re-sorting.
+  for (const target of Object.values(nodes)) {
+    target.screens = target.screens.filter((shot): shot is Shot => Boolean(shot));
   }
 
   // Two sources, deliberately distinguishable. A COYOTE-declared edge carries `canon` and

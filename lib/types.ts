@@ -90,8 +90,12 @@ export type BrainNode = {
   subs: Item[];
   todos: Item[];
   blockers: Item[];
-  /** fixed array of 4; empty slots are null */
-  screens: (Shot | null)[];
+  /**
+   * Ordered, unbounded — oldest first. Was a fixed 4-slot array; Salman, 2026-09-15: any
+   * number may be added, none evicted by adding more. The first 4 render on the card
+   * face; the rest are reachable through VIEW ALL, never hidden outright.
+   */
+  screens: Shot[];
   drops: Drop[];
 };
 
