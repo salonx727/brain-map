@@ -402,15 +402,19 @@ export default function ControlPanel({
             );
           })}
           {d.screens.length >= 4 ? (
-            <button className="empty" onClick={() => intake.pickScreenshot()}>
-              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-              <span>ADD SCREENSHOT</span>
-            </button>
+            <div className="slot">
+              <button className="empty" onClick={() => intake.pickScreenshot()}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+                <span>{"UI SLOT " + (d.screens.length + 1)}</span>
+              </button>
+            </div>
           ) : null}
           {d.screens.length > 4 ? (
-            <button className="empty" onClick={() => setScreensOpen(true)}>
-              <span>{"VIEW ALL (" + d.screens.length + ")"}</span>
-            </button>
+            <div className="slot">
+              <button className="empty" onClick={() => setScreensOpen(true)}>
+                <span>{"VIEW ALL (" + d.screens.length + ")"}</span>
+              </button>
+            </div>
           ) : null}
         </div>
       ) : null}
