@@ -1,0 +1,296 @@
+{
+  "_note": "PLACEHOLDER DATA — not canon. Real MUSE screen list pending from Shawn. IDs, titles and node IDs are stand-ins; map node_id to the real mind map node IDs.",
+  "flows": [
+    {
+      "id": "MUSE",
+      "node_id": "NODE_MUSE",
+      "title": "MUSE",
+      "start_screen": "M1"
+    },
+    {
+      "id": "PAY",
+      "node_id": "NODE_PAY",
+      "title": "Payment",
+      "start_screen": "P1"
+    }
+  ],
+  "screens": [
+    {
+      "id": "M1",
+      "flow_id": "MUSE",
+      "title": "Placeholder M1",
+      "current_version": "M1.v1"
+    },
+    {
+      "id": "M2",
+      "flow_id": "MUSE",
+      "title": "Placeholder M2",
+      "current_version": "M2.v1"
+    },
+    {
+      "id": "M3",
+      "flow_id": "MUSE",
+      "title": "Placeholder M3",
+      "current_version": "M3.v1"
+    },
+    {
+      "id": "M4",
+      "flow_id": "MUSE",
+      "title": "Placeholder M4",
+      "current_version": "M4.v2"
+    },
+    {
+      "id": "M5",
+      "flow_id": "MUSE",
+      "title": "Placeholder M5",
+      "current_version": "M5.v1"
+    },
+    {
+      "id": "M6",
+      "flow_id": "MUSE",
+      "title": "Placeholder M6",
+      "current_version": null
+    },
+    {
+      "id": "X1",
+      "flow_id": "MUSE",
+      "title": "Placeholder X1",
+      "current_version": "X1.v1"
+    },
+    {
+      "id": "P1",
+      "flow_id": "PAY",
+      "title": "Placeholder P1",
+      "current_version": "P1.v1"
+    },
+    {
+      "id": "P2",
+      "flow_id": "PAY",
+      "title": "Placeholder P2",
+      "current_version": "P2.v1"
+    }
+  ],
+  "image_versions": [
+    {
+      "id": "M1.v1",
+      "screen_id": "M1",
+      "image_link": null,
+      "figma_link": null
+    },
+    {
+      "id": "M2.v1",
+      "screen_id": "M2",
+      "image_link": null,
+      "figma_link": null
+    },
+    {
+      "id": "M3.v1",
+      "screen_id": "M3",
+      "image_link": null,
+      "figma_link": null
+    },
+    {
+      "id": "M4.v1",
+      "screen_id": "M4",
+      "image_link": null,
+      "figma_link": null
+    },
+    {
+      "id": "M4.v2",
+      "screen_id": "M4",
+      "image_link": null,
+      "figma_link": null
+    },
+    {
+      "id": "M5.v1",
+      "screen_id": "M5",
+      "image_link": null,
+      "figma_link": null
+    },
+    {
+      "id": "X1.v1",
+      "screen_id": "X1",
+      "image_link": null,
+      "figma_link": null
+    },
+    {
+      "id": "P1.v1",
+      "screen_id": "P1",
+      "image_link": null,
+      "figma_link": null
+    },
+    {
+      "id": "P2.v1",
+      "screen_id": "P2",
+      "image_link": null,
+      "figma_link": null
+    }
+  ],
+  "touch_points": [
+    {
+      "id": "M1.T1",
+      "screen_id": "M1",
+      "n": 1,
+      "x": 50,
+      "y": 85,
+      "action": "Placeholder action",
+      "to_screen": "M2",
+      "placed_on": "M1.v1"
+    },
+    {
+      "id": "M2.T1",
+      "screen_id": "M2",
+      "n": 1,
+      "x": 50,
+      "y": 60,
+      "action": "Placeholder action",
+      "to_screen": "M3",
+      "placed_on": "M2.v1"
+    },
+    {
+      "id": "M2.T2",
+      "screen_id": "M2",
+      "n": 2,
+      "x": 50,
+      "y": 80,
+      "action": "Placeholder action",
+      "to_screen": "X1",
+      "placed_on": "M2.v1"
+    },
+    {
+      "id": "M3.T1",
+      "screen_id": "M3",
+      "n": 1,
+      "x": 70,
+      "y": 30,
+      "action": "Placeholder action",
+      "to_screen": "M4",
+      "placed_on": "M3.v1"
+    },
+    {
+      "id": "M4.T1",
+      "screen_id": "M4",
+      "n": 1,
+      "x": 50,
+      "y": 50,
+      "action": "Placeholder action",
+      "to_screen": "M5",
+      "placed_on": "M4.v1"
+    },
+    {
+      "id": "M5.T1",
+      "screen_id": "M5",
+      "n": 1,
+      "x": 50,
+      "y": 85,
+      "action": "Placeholder action",
+      "to_screen": "M6",
+      "placed_on": "M5.v1"
+    },
+    {
+      "id": "M5.T2",
+      "screen_id": "M5",
+      "n": 2,
+      "x": 50,
+      "y": 70,
+      "action": "Placeholder action",
+      "to_screen": "P1",
+      "placed_on": "M5.v1"
+    },
+    {
+      "id": "X1.T1",
+      "screen_id": "X1",
+      "n": 1,
+      "x": 50,
+      "y": 85,
+      "action": "Placeholder action",
+      "to_screen": "M4",
+      "placed_on": "X1.v1"
+    },
+    {
+      "id": "P1.T1",
+      "screen_id": "P1",
+      "n": 1,
+      "x": 50,
+      "y": 85,
+      "action": "Placeholder action",
+      "to_screen": "P2",
+      "placed_on": "P1.v1"
+    }
+  ],
+  "nodes_placeholder": [
+    {
+      "id": "NODE_MUSE",
+      "label": "MUSE"
+    },
+    {
+      "id": "NODE_PAY",
+      "label": "Payment (placeholder)"
+    },
+    {
+      "id": "NODE_EMPTY",
+      "label": "Node with no flows (placeholder)"
+    }
+  ],
+  "_expected": {
+    "MUSE.mainPath": [
+      "M1",
+      "M2",
+      "M3",
+      "M4",
+      "M5",
+      "M6"
+    ],
+    "MUSE.lanes": [
+      {
+        "from": "M2",
+        "screens": [
+          "X1"
+        ],
+        "end": {
+          "type": "rejoin",
+          "screen": "M4"
+        }
+      },
+      {
+        "from": "M5",
+        "screens": [],
+        "end": {
+          "type": "exit",
+          "flow": "PAY",
+          "screen": "P1",
+          "node": "NODE_PAY"
+        }
+      }
+    ],
+    "MUSE.laneSequence.X1": [
+      "M1",
+      "M2",
+      "X1",
+      "M4",
+      "M5",
+      "M6"
+    ],
+    "flags": [
+      {
+        "rule": "V2",
+        "target": "M4.T1",
+        "reason": "check position (placed on M4.v1, current M4.v2)"
+      },
+      {
+        "rule": "V3",
+        "target": "M6",
+        "reason": "no image"
+      }
+    ],
+    "flowsForNode": {
+      "NODE_MUSE": [
+        "MUSE"
+      ],
+      "NODE_PAY": [
+        "PAY"
+      ],
+      "NODE_EMPTY": []
+    }
+  }
+}

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "sync:coyote": "tsx --env-file=.env scripts/sync-coyote.ts",
-    "upload:prototype": "tsx --env-file=.env scripts/upload-prototype.ts"
+    "upload:prototype": "tsx --env-file=.env scripts/upload-prototype.ts",
+    "seed:walk": "tsx --env-file=.env scripts/seed-walk-fixture.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

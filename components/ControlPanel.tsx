@@ -27,6 +27,7 @@ import type { ConnectionIntent, ConnectionRelation } from "@/lib/types/pm";
 import ListEditor from "./ListEditor";
 import PrototypePanel from "./PrototypePanel";
 import RulingList from "./RulingList";
+import WalkPanel from "./WalkPanel";
 import WirePicker, { optionsFromModel } from "./WirePicker";
 
 /** One past TAGS, and only ever rendered on Shawn's card — see the strip below. */
@@ -466,6 +467,11 @@ export default function ControlPanel({
           </div>
         </div>
       ) : null}
+
+      {/* WALK — the step-through UX viewer, spec v1.7 (2026-09-16). Under the UI tab, per
+          node, exactly as the build kit requires; a separate section from the screenshot
+          grid above, not a replacement for it. */}
+      {tab === 0 ? <WalkPanel nodeId={d.id} onOpenNode={(id) => onOpenCard(id, 0)} /> : null}
 
       {/* Same ASK affordance on both lists — Shawn, 2026-09-12: "I should be able to click
           on the blocker and walk through... I cannot do that in the to-do column." The
