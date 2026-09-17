@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { getWalkForNodeAction, type WalkGraphWithUrls } from "@/app/actions/walk";
 import { useBrain } from "@/lib/brain";
-import { flowsForNode, laneSequence, lanes, mainPath, validateFlow } from "@/lib/walk/derive";
-import type { WalkFlag, WalkLane } from "@/lib/walk/types";
+import { flowsForNode, laneSequence, lanes, mainPath, orphanScreens, validateFlow } from "@/lib/walk/derive";
+import { WALK_FLAG_LABELS, type WalkFlag, type WalkLane } from "@/lib/walk/types";
+import WalkTray from "./WalkTray";
 
 type View = "images" | "chart";
 
@@ -32,9 +33,9 @@ export default function WalkPanel({
     { status: "loading" } | { status: "error"; message: string } | { status: "ready"; graph: WalkGraphWithUrls }
   >({ status: "loading" });
 
-  useEffect(() => {
+  const load = useCallback(() => {
     let cancelled = false;
-    setState({ status: "loading" });
+    setState((prev) => (prev.status === "ready" ? prev : { status: "loading" }));
     getWalkForNodeAction(nodeId)
       .then((graph) => {
         if (!cancelled) setState({ status: "ready", graph });
@@ -47,6 +48,8 @@ export default function WalkPanel({
     };
   }, [nodeId]);
 
+  useEffect(() => load(), [load]);
+
   if (state.status === "loading") return <div className="none">Loading WALK…</div>;
   if (state.status === "error") return <div className="none">{state.message}</div>;
   return (
@@ -56,6 +59,7 @@ export default function WalkPanel({
       landing={landing}
       onLandingConsumed={onLandingConsumed}
       onOpenNode={onOpenNode}
+      onChanged={load}
     />
   );
 }
@@ -66,18 +70,22 @@ function WalkViewer({
   landing,
   onLandingConsumed,
   onOpenNode,
+  onChanged,
 }: {
   nodeId: string;
   graph: WalkGraphWithUrls;
   landing?: WalkLanding | null;
   onLandingConsumed?: () => void;
   onOpenNode: (nodeId: string, landing?: WalkLanding) => void;
+  onChanged: () => void;
 }) {
   const { model } = useBrain();
   const owned = useMemo(() => flowsForNode(graph, nodeId), [graph, nodeId]);
   const [flowId, setFlowId] = useState<string | null>(owned[0]?.id ?? null);
   const [laneIndex, setLaneIndex] = useState<number | null>(null);
   const [position, setPosition] = useState(0);
+  /** A screen nothing points to yet (V6) has no place in any sequence — viewing one is a one-off override, not a position within main/lane navigation. Cleared by any other navigation. */
+  const [orphanView, setOrphanView] = useState<string | null>(null);
   const [view, setView] = useState<View>("images");
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [flash, setFlash] = useState("");
@@ -103,6 +111,8 @@ function WalkViewer({
 
   const flowLanes = useMemo<WalkLane[]>(() => (flowId ? lanes(graph, flowId) : []), [graph, flowId]);
   const main = useMemo(() => (flowId ? mainPath(graph, flowId) : []), [graph, flowId]);
+  /** Screens nothing points to yet — appended at the end of the strip, per spec, until a touch point reaches them (V6 "not linked"). */
+  const orphans = useMemo(() => (flowId ? orphanScreens(graph, flowId) : []), [graph, flowId]);
   const flags = useMemo<WalkFlag[]>(() => (flowId ? validateFlow(graph, flowId) : []), [graph, flowId]);
   const flagsByScreen = useMemo(() => {
     const touchPointScreen = new Map(graph.touchPoints.map((t) => [t.id, t.screenId]));
@@ -131,7 +141,7 @@ function WalkViewer({
     onLandingConsumed?.();
   }, [landing?.flowId, landing?.screenId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const currentScreenId = sequence[position];
+  const currentScreenId = orphanView ?? sequence[position];
   const currentScreen = graph.screens.find((s) => s.id === currentScreenId);
 
   useEffect(() => {
@@ -143,6 +153,7 @@ function WalkViewer({
     (targetFlowId: string, screenId: string) => {
       setFlowId(targetFlowId);
       setLaneIndex(null);
+      setOrphanView(null);
       const seq = mainPath(graph, targetFlowId);
       const idx = seq.indexOf(screenId);
       setPosition(idx >= 0 ? idx : 0);
@@ -165,6 +176,11 @@ function WalkViewer({
   const navigateTo = useCallback(
     (screenId: string) => {
       setFlash("");
+      if (orphans.includes(screenId)) {
+        setOrphanView(screenId);
+        return;
+      }
+      setOrphanView(null);
       const inCurrent = sequence.indexOf(screenId);
       if (inCurrent >= 0) {
         setPosition(inCurrent);
@@ -185,12 +201,13 @@ function WalkViewer({
         handleExit({ node: destFlow?.nodeId ?? "", flow: dest.flowId, screen: dest.id });
       }
     },
-    [sequence, flowLanes, flowId, graph, handleExit],
+    [orphans, sequence, flowLanes, flowId, graph, handleExit],
   );
 
   const goDelta = useCallback(
     (delta: number) => {
       setFlash("");
+      setOrphanView(null);
       setPosition((p) => Math.max(0, Math.min(sequence.length - 1, p + delta)));
     },
     [sequence.length],
@@ -249,6 +266,7 @@ function WalkViewer({
               setFlowId(f.id);
               setLaneIndex(null);
               setPosition(0);
+              setOrphanView(null);
               setFlash("");
             }}
           >
@@ -256,8 +274,12 @@ function WalkViewer({
           </button>
         ))}
         <span className="walk-crumb">
-          {currentScreenId ? `${currentScreenId} · ${position + 1} of ${sequence.length}` : ""}
-          {laneIndex !== null ? " · branch lane" : ""}
+          {orphanView
+            ? `${orphanView} · not linked`
+            : currentScreenId
+              ? `${currentScreenId} · ${position + 1} of ${sequence.length}`
+              : ""}
+          {!orphanView && laneIndex !== null ? " · branch lane" : ""}
         </span>
         <span className="walk-viewtoggle">
           <button className={"tg" + (view === "images" ? " act" : "")} onClick={() => setView("images")}>
@@ -297,7 +319,7 @@ function WalkViewer({
                   <span className="walk-flags">
                     {screenFlags.map((f, i) => (
                       <span key={i} className="walk-flag" title={f.reason}>
-                        {f.rule}
+                        {WALK_FLAG_LABELS[f.rule]}
                       </span>
                     ))}
                   </span>
@@ -325,6 +347,7 @@ function WalkViewer({
           </div>
           <WalkGrid
             main={main}
+            orphans={orphans}
             lanesList={flowLanes}
             currentScreenId={currentScreenId}
             graph={graph}
@@ -340,6 +363,7 @@ function WalkViewer({
         <>
           <WalkGrid
             main={main}
+            orphans={orphans}
             lanesList={flowLanes}
             currentScreenId={currentScreenId}
             graph={graph}
@@ -360,6 +384,8 @@ function WalkViewer({
           </div>
         </>
       )}
+
+      {flowId ? <WalkTray nodeId={nodeId} flowId={flowId} main={main} graph={graph} onChanged={onChanged} /> : null}
     </div>
   );
 }
@@ -439,6 +465,7 @@ function exitLabel(
 
 function WalkGrid({
   main,
+  orphans,
   lanesList,
   currentScreenId,
   graph,
@@ -450,6 +477,7 @@ function WalkGrid({
   nodeId,
 }: {
   main: string[];
+  orphans: string[];
   lanesList: WalkLane[];
   currentScreenId: string | undefined;
   graph: WalkGraphWithUrls;
@@ -461,7 +489,7 @@ function WalkGrid({
   nodeId: string;
 }) {
   const { model } = useBrain();
-  const cols = Math.max(main.length, 1);
+  const cols = Math.max(main.length + orphans.length, 1);
   const branchPoints = new Set(lanesList.map((l) => l.from));
 
   return (
@@ -492,6 +520,23 @@ function WalkGrid({
               current={id === currentScreenId}
               onClick={() => onScreenClick(id)}
             />
+          </div>
+        ),
+      )}
+      {orphans.map((id, j) =>
+        mode === "chart" ? (
+          <ChartBox
+            key={id}
+            id={id}
+            title={graph.screens.find((s) => s.id === id)?.title ?? ""}
+            current={id === currentScreenId}
+            visited={visited.has(id)}
+            style={{ gridColumn: main.length + j + 1, gridRow: 1 }}
+            onClick={() => onScreenClick(id)}
+          />
+        ) : (
+          <div key={id} style={{ gridColumn: main.length + j + 1, gridRow: 1 }}>
+            <Thumb id={id} graph={graph} flagsByScreen={flagsByScreen} current={id === currentScreenId} onClick={() => onScreenClick(id)} />
           </div>
         ),
       )}
@@ -586,7 +631,7 @@ function Thumb({
   return (
     <button
       className={"walk-thumb" + (dashed ? " walk-thumb-lane" : "") + (current ? " on" : "")}
-      title={flags.map((f) => f.reason).join("; ") || undefined}
+      title={flags.map((f) => WALK_FLAG_LABELS[f.rule]).join("; ") || undefined}
       onClick={onClick}
     >
       <span className="walk-thumb-tile">

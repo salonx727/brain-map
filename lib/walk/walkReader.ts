@@ -1,10 +1,11 @@
-// Read-only. Every write to walk_* happens through scripts/seed-walk-fixture.ts in phase
-// 1 (BUILD_PROMPT.md: "phase 1 uses the seed/import," no editor) — there is deliberately
-// no walkWriter.ts and no write Server Action, so "AI access is read-only" (spec §5) has
-// nothing to violate: the app itself has no write path to violate it with either.
+// Read-only. Writes live in walkWriter.ts (added 2026-09-17 for manual upload — see its
+// own header) and, for phase 1's fixture data, scripts/seed-walk-fixture.ts. Both are only
+// ever called from app/actions/walk.ts, same as every other write in this app (service-role
+// credential, never exposed to the browser) — AI access stays read-only (spec §5) because
+// nothing gives an agent a way to call either.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { WalkFlow, WalkGraph, WalkImageVersion, WalkScreen, WalkTouchPoint } from "./types";
+import type { WalkFlow, WalkGraph, WalkImageVersion, WalkScreen, WalkStagedImage, WalkTouchPoint } from "./types";
 
 function toFlow(row: { id: string; node_id: string; title: string; start_screen: string | null }): WalkFlow {
   return { id: row.id, nodeId: row.node_id, title: row.title, startScreen: row.start_screen };
@@ -76,4 +77,18 @@ export async function getWalkGraphForNode(client: SupabaseClient, nodeId: string
     imageVersions: versions,
     touchPoints: (ownTouchPoints ?? []).map(toTouchPoint),
   };
+}
+
+/** The tray for one node — every uploaded file not yet placed into a flow, oldest first. */
+export async function listStagedImages(client: SupabaseClient, nodeId: string): Promise<WalkStagedImage[]> {
+  const { data, error } = await client.from("walk_staged_image").select("*").eq("node_id", nodeId).order("uploaded_at", { ascending: true });
+  if (error) throw new Error(`listStagedImages: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    nodeId: row.node_id,
+    fileName: row.file_name,
+    storagePath: row.storage_path,
+    contentType: row.content_type,
+    uploadedAt: row.uploaded_at,
+  }));
 }

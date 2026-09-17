@@ -133,7 +133,8 @@ export function validateFlow(graph: WalkGraph, flowId: string): WalkFlag[] {
   const mainSet = new Set(main);
   const flowLanes = lanes(graph, flowId);
   const laneScreenIds = new Set(flowLanes.flatMap((l) => l.screens));
-  const everyScreenId = new Set([...main, ...laneScreenIds]);
+  const orphanIds = orphanScreens(graph, flowId);
+  const everyScreenId = new Set([...main, ...laneScreenIds, ...orphanIds]);
 
   // V4 — a cycle in the main path itself: the walk revisited a screen before running out
   // of touch points. mainPath() already stops there; detect it by checking whether the
@@ -168,12 +169,17 @@ export function validateFlow(graph: WalkGraph, flowId: string): WalkFlag[] {
     }
 
     for (const tp of touchPoints) {
-      // V2 — placed on an image version that is no longer current.
-      if (tp.placedOn && screen.currentVersion && tp.placedOn !== screen.currentVersion) {
+      // V2 — never placed against a version at all, or placed on one that is no longer
+      // current. A system-inserted touch point (insertScreenBetween) is born with
+      // placedOn null specifically so it lands here until a human confirms its position —
+      // same flag, two ways to earn it.
+      if (screen.currentVersion && (!tp.placedOn || tp.placedOn !== screen.currentVersion)) {
         flags.push({
           rule: "V2",
           target: tp.id,
-          reason: `check position (placed on ${tp.placedOn}, current ${screen.currentVersion})`,
+          reason: tp.placedOn
+            ? `check position (placed on ${tp.placedOn}, current ${screen.currentVersion})`
+            : "check position (never placed)",
         });
       }
       // V5 — points at a screen that doesn't exist.
@@ -183,5 +189,21 @@ export function validateFlow(graph: WalkGraph, flowId: string): WalkFlag[] {
     }
   }
 
+  // V6 — a screen in this flow that nothing points to yet (freshly appended at the end of
+  // the strip, per spec, until a touch point is drawn to it).
+  for (const screenId of orphanIds) {
+    flags.push({ rule: "V6", target: screenId, reason: "not linked" });
+  }
+
   return flags;
+}
+
+/** Screens that belong to this flow but aren't reached by mainPath or any lane — a screen just appended at the end of the strip, with nothing pointing to it yet. */
+export function orphanScreens(graph: WalkGraph, flowId: string): string[] {
+  const flow = graph.flows.find((f) => f.id === flowId);
+  if (!flow) return [];
+  const main = mainPath(graph, flowId);
+  const flowLanes = lanes(graph, flowId);
+  const reachable = new Set([...main, ...flowLanes.flatMap((l) => l.screens)]);
+  return graph.screens.filter((s) => s.flowId === flowId && !reachable.has(s.id)).map((s) => s.id);
 }

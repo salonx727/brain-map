@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flowsForNode, laneSequence, lanes, mainPath, validateFlow } from "./derive";
+import { flowsForNode, laneSequence, lanes, mainPath, orphanScreens, validateFlow } from "./derive";
 import type { WalkGraph } from "./types";
 import fixture from "./fixtures/walk-muse-placeholder.json";
 
@@ -82,6 +82,39 @@ describe("validateFlow", () => {
     };
     const flags = validateFlow(withBrokenLink, "MUSE");
     expect(flags).toContainEqual(expect.objectContaining({ rule: "V5", target: "M6.T1" }));
+  });
+
+  it("V2: a touch point never placed against any version (placedOn null) is flagged 'check position'", () => {
+    const withUnplacedTouchPoint: WalkGraph = {
+      flows: [{ id: "INS", nodeId: "test:insert", title: "Insert", startScreen: "A" }],
+      screens: [
+        { id: "A", flowId: "INS", title: "A", currentVersion: "A.v1" },
+        { id: "NEW", flowId: "INS", title: "New", currentVersion: "NEW.v1" },
+        { id: "B", flowId: "INS", title: "B", currentVersion: "B.v1" },
+      ],
+      imageVersions: [
+        { id: "A.v1", screenId: "A", imageLink: "a.png", figmaLink: null },
+        { id: "NEW.v1", screenId: "NEW", imageLink: "new.png", figmaLink: null },
+        { id: "B.v1", screenId: "B", imageLink: "b.png", figmaLink: null },
+      ],
+      touchPoints: [
+        { id: "A.T1", screenId: "A", n: 1, x: 50, y: 50, action: "to NEW", toScreen: "NEW", placedOn: "A.v1" },
+        { id: "NEW.T1", screenId: "NEW", n: 1, x: 50, y: 50, action: "to B", toScreen: "B", placedOn: null },
+      ],
+    };
+    expect(mainPath(withUnplacedTouchPoint, "INS")).toEqual(["A", "NEW", "B"]);
+    const flags = validateFlow(withUnplacedTouchPoint, "INS");
+    expect(flags).toContainEqual(expect.objectContaining({ rule: "V2", target: "NEW.T1" }));
+  });
+
+  it("V6: a screen appended at the end with no touch point pointing to it is flagged 'not linked'", () => {
+    const withOrphan: WalkGraph = {
+      ...graph,
+      screens: [...graph.screens, { id: "M7", flowId: "MUSE", title: "Placeholder M7", currentVersion: null }],
+    };
+    expect(orphanScreens(withOrphan, "MUSE")).toEqual(["M7"]);
+    const flags = validateFlow(withOrphan, "MUSE");
+    expect(flags).toContainEqual(expect.objectContaining({ rule: "V6", target: "M7" }));
   });
 
   it("V4: a genuine main-path cycle (A→B→A) is flagged 'cycle', and mainPath stops rather than looping forever", () => {

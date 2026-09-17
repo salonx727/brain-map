@@ -1,27 +1,36 @@
 "use server";
 
-// Read-only surface for WALK — see lib/walk/walkReader.ts's own header for why there is no
-// write action here. Thin wrapper, same split as pm.ts: the client construction is the
-// only thing this file does.
+// Read path plus the manual-upload write path added 2026-09-17 (Shawn's ruling — see
+// lib/walk/walkWriter.ts's own header). Thin wrappers, same split as pm.ts: the logic lives
+// in lib/walk/*, this file's only job is constructing the service-role client and never
+// letting it leak past this boundary — a Client Component may call these directly (Next.js
+// Server Actions) but never receives the credential itself.
 
+import { revalidatePath } from "next/cache";
 import { createPmServiceClient } from "@/lib/pm/serviceClient";
-import { getWalkGraphForNode } from "@/lib/walk/walkReader";
+import { getWalkGraphForNode, listStagedImages } from "@/lib/walk/walkReader";
 import { signWalkImageUrl } from "@/lib/walk/walkStorage";
-import type { WalkGraph } from "@/lib/walk/types";
+import { createScreenAtEnd, discardStagedImage, insertScreenBetween, replaceScreenImage, stageImage } from "@/lib/walk/walkWriter";
+import type { WalkGraph, WalkStagedImage } from "@/lib/walk/types";
 
 export type WalkGraphWithUrls = WalkGraph & {
   /** imageVersion id → a fresh signed URL, one entry per version that has an image_link. Never persisted past this response. */
   signedUrls: Record<string, string>;
+  /** Every uploaded file not yet placed into a flow — the staging tray, Shawn's spec 2026-09-17. */
+  stagedImages: WalkStagedImage[];
+  /** stagedImage id → a fresh signed URL, so the tray can show a thumbnail before anything is placed. */
+  stagedUrls: Record<string, string>;
 };
 
 /** Empty graph, empty signedUrls (never an error) for a node with nothing mapped — ACCEPTANCE.md #25. */
 export async function getWalkForNodeAction(nodeId: string): Promise<WalkGraphWithUrls> {
   const client = createPmServiceClient();
-  const graph = await getWalkGraphForNode(client, nodeId);
+  const [graph, stagedImages] = await Promise.all([getWalkGraphForNode(client, nodeId), listStagedImages(client, nodeId)]);
 
   const signedUrls: Record<string, string> = {};
-  await Promise.all(
-    graph.imageVersions
+  const stagedUrls: Record<string, string> = {};
+  await Promise.all([
+    ...graph.imageVersions
       .filter((v) => v.imageLink)
       .map(async (v) => {
         try {
@@ -32,7 +41,63 @@ export async function getWalkForNodeAction(nodeId: string): Promise<WalkGraphWit
           // error for the whole panel.
         }
       }),
-  );
+    ...stagedImages.map(async (s) => {
+      try {
+        stagedUrls[s.id] = await signWalkImageUrl(client, s.storagePath);
+      } catch {
+        // Same posture as above — a tray thumbnail that can't sign shows as a plain file-name row.
+      }
+    }),
+  ]);
 
-  return { ...graph, signedUrls };
+  return { ...graph, signedUrls, stagedImages, stagedUrls };
+}
+
+/** Uploads a file straight into the tray, unassigned — never a Figma frame-picker (superseded task C, Shawn's ruling 2026-09-17). `duplicate` is a warning for the caller to surface, never a block. */
+export async function stageWalkImageAction(formData: FormData): Promise<{ staged: WalkStagedImage; duplicate: boolean }> {
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) throw new Error("stageWalkImageAction: no file provided");
+  const nodeId = formData.get("nodeId") as string | null;
+  if (!nodeId) throw new Error("stageWalkImageAction: nodeId is required");
+  const fileName = file instanceof File ? file.name : "upload";
+
+  const client = createPmServiceClient();
+  const bytes = await file.arrayBuffer();
+  const result = await stageImage(client, { nodeId, fileName, contentType: file.type || null, bytes });
+  revalidatePath("/");
+  return result;
+}
+
+export async function discardStagedImageAction(stagedId: string): Promise<void> {
+  const client = createPmServiceClient();
+  await discardStagedImage(client, stagedId);
+  revalidatePath("/");
+}
+
+export async function replaceScreenImageAction(input: { nodeId: string; stagedId: string; screenId: string }) {
+  const client = createPmServiceClient();
+  const result = await replaceScreenImage(client, input);
+  revalidatePath("/");
+  return result;
+}
+
+export async function createScreenAtEndAction(input: { nodeId: string; flowId: string; stagedId: string; title?: string }) {
+  const client = createPmServiceClient();
+  const result = await createScreenAtEnd(client, input);
+  revalidatePath("/");
+  return result;
+}
+
+export async function insertScreenBetweenAction(input: {
+  nodeId: string;
+  flowId: string;
+  stagedId: string;
+  afterScreenId: string;
+  beforeScreenId: string;
+  title?: string;
+}) {
+  const client = createPmServiceClient();
+  const result = await insertScreenBetween(client, input);
+  revalidatePath("/");
+  return result;
 }
