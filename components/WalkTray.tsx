@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
+  branchFromScreenAction,
   createScreenAtEndAction,
   discardStagedImageAction,
   insertScreenBetweenAction,
@@ -36,6 +37,7 @@ export default function WalkTray({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const [insertModeFor, setInsertModeFor] = useState<string | null>(null);
+  const [branchModeFor, setBranchModeFor] = useState<string | null>(null);
   const [confirmReplace, setConfirmReplace] = useState<{ stagedId: string; screenId: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -43,6 +45,7 @@ export default function WalkTray({
   function closeMenus() {
     setOpenMenuFor(null);
     setInsertModeFor(null);
+    setBranchModeFor(null);
   }
 
   async function handleUpload(file: File | undefined) {
@@ -124,6 +127,22 @@ export default function WalkTray({
     }
   }
 
+  /** Unlike insert, the source screen keeps its existing next screen — this only adds a second path off it. */
+  async function handleBranchFrom(stagedId: string, fromScreenId: string) {
+    if (!flowId) return;
+    setBusy(true);
+    setError("");
+    closeMenus();
+    try {
+      await branchFromScreenAction({ nodeId, flowId, stagedId, fromScreenId });
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const insertableAfter = main.slice(0, -1);
 
   return (
@@ -189,6 +208,13 @@ export default function WalkTray({
                       : insertableAfter.length > 0 && (
                           <button onClick={() => setInsertModeFor(s.id)}>Insert after…</button>
                         )}
+                    {branchModeFor === s.id
+                      ? main.map((screenId) => (
+                          <button key={screenId} onClick={() => handleBranchFrom(s.id, screenId)}>
+                            From {screenId}
+                          </button>
+                        ))
+                      : main.length > 0 && <button onClick={() => setBranchModeFor(s.id)}>Branch from…</button>}
                   </div>
                 ) : null}
               </div>

@@ -241,3 +241,66 @@ export async function insertScreenBetween(
 
   return { screenId };
 }
+
+/**
+ * Branch from an existing screen: unlike insertScreenBetween, the source screen keeps its
+ * existing next screen — this only adds a second (or third, ...) touch point off it, into
+ * a brand-new screen. That's what makes it a lane rather than a longer main path; lanes()
+ * already picks up any touch point with n >= 2 on a main-path screen, so no derive.ts
+ * change is needed for the new lane to render once this touch point exists.
+ */
+export async function branchFromScreen(
+  client: SupabaseClient,
+  input: { nodeId: string; flowId: string; stagedId: string; fromScreenId: string; title?: string },
+): Promise<{ screenId: string }> {
+  const { data: staged, error: stagedError } = await client.from("walk_staged_image").select("*").eq("id", input.stagedId).single();
+  if (stagedError || !staged) throw new Error("branchFromScreen: staged image not found");
+
+  const { data: existingTps, error: tpError } = await client.from("walk_touch_point").select("n").eq("screen_id", input.fromScreenId);
+  if (tpError) throw new Error(`branchFromScreen: ${tpError.message}`);
+  const nextN = 1 + Math.max(0, ...(existingTps ?? []).map((t) => t.n as number));
+
+  const count = await countScreensInFlow(client, input.flowId);
+  const screenId = `${input.flowId}.N${count + 1}`;
+
+  const { error: screenError } = await client.from("walk_screen").insert({ id: screenId, flow_id: input.flowId, title: input.title ?? staged.file_name });
+  if (screenError) throw new Error(`branchFromScreen: ${screenError.message}`);
+
+  const versionId = `${screenId}.v1`;
+  const finalPath = walkImagePath(input.nodeId, screenId, versionId);
+  await copyWalkImage(client, staged.storage_path, finalPath);
+
+  const { error: versionError } = await client
+    .from("walk_image_version")
+    .insert({ id: versionId, screen_id: screenId, image_link: finalPath, figma_link: null });
+  if (versionError) throw new Error(`branchFromScreen: ${versionError.message}`);
+
+  const { error: updateError } = await client.from("walk_screen").update({ current_version: versionId }).eq("id", screenId);
+  if (updateError) throw new Error(`branchFromScreen: ${updateError.message}`);
+
+  const { error: newTpError } = await client.from("walk_touch_point").insert({
+    id: `${input.fromScreenId}.T${nextN}`,
+    screen_id: input.fromScreenId,
+    n: nextN,
+    x: 50,
+    y: 50,
+    action: "Branch",
+    to_screen: screenId,
+    placed_on: null,
+  });
+  if (newTpError) throw new Error(`branchFromScreen: ${newTpError.message}`);
+
+  await removeWalkImage(client, staged.storage_path);
+  await client.from("walk_staged_image").delete().eq("id", input.stagedId);
+
+  await client.from("walk_change_log").insert({
+    node_id: input.nodeId,
+    screen_id: screenId,
+    kind: "branched",
+    new_version_id: versionId,
+    file_name: staged.file_name,
+    detail: `${screenId} branched from ${input.fromScreenId} (${staged.file_name})`,
+  });
+
+  return { screenId };
+}

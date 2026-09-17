@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { createPmServiceClient } from "@/lib/pm/serviceClient";
 import { getWalkGraphForNode, listStagedImages } from "@/lib/walk/walkReader";
 import { signWalkImageUrl } from "@/lib/walk/walkStorage";
-import { createScreenAtEnd, discardStagedImage, insertScreenBetween, replaceScreenImage, stageImage } from "@/lib/walk/walkWriter";
+import { branchFromScreen, createScreenAtEnd, discardStagedImage, insertScreenBetween, replaceScreenImage, stageImage } from "@/lib/walk/walkWriter";
 import type { WalkGraph, WalkStagedImage } from "@/lib/walk/types";
 
 export type WalkGraphWithUrls = WalkGraph & {
@@ -98,6 +98,13 @@ export async function insertScreenBetweenAction(input: {
 }) {
   const client = createPmServiceClient();
   const result = await insertScreenBetween(client, input);
+  revalidatePath("/");
+  return result;
+}
+
+export async function branchFromScreenAction(input: { nodeId: string; flowId: string; stagedId: string; fromScreenId: string; title?: string }) {
+  const client = createPmServiceClient();
+  const result = await branchFromScreen(client, input);
   revalidatePath("/");
   return result;
 }
