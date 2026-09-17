@@ -46,6 +46,26 @@ async function countScreensInFlow(client: SupabaseClient, flowId: string): Promi
 }
 
 /**
+ * Every node's own WALK, not just MUSE's — Shawn, 2026-09-17: "every node and module has
+ * the ability to have its own image library and walk-through." Phase 1 only ever seeded
+ * MUSE's flow by fixture; every other node had zero walk_flow rows, so its UI tab could
+ * only ever say "no flows are mapped" with no way to change that. This is the one missing
+ * piece: a flow with no screens yet, so the tray has something to attach the first upload
+ * to. start_screen stays null until createScreenAtEnd sets it from the first real screen.
+ */
+export async function startWalkForNode(client: SupabaseClient, input: { nodeId: string; title?: string }): Promise<{ flowId: string }> {
+  // Readable and stable rather than a UUID — every screen this flow ever gets will show
+  // "{flowId}.N{n}" as its own id (createScreenAtEnd etc.), so an opaque prefix here would
+  // stay ugly on every single screen forever, not just this one row. One flow per node
+  // from this action (the UI only offers "start" while a node has zero flows), so the
+  // node's own key is collision-free without needing a random suffix.
+  const flowId = `${input.nodeId.replace(/[^a-zA-Z0-9]/g, "-")}-WALK`;
+  const { error } = await client.from("walk_flow").insert({ id: flowId, node_id: input.nodeId, title: input.title ?? "Walkthrough" });
+  if (error) throw new Error(`startWalkForNode: ${error.message}`);
+  return { flowId };
+}
+
+/**
  * Uploads a file into the tray, unassigned to any screen. `duplicate` is a warning, not a
  * block — Shawn's spec: "The upload should warn about duplicates," never refuse one, since
  * a person may legitimately re-upload the same export.
@@ -155,6 +175,17 @@ export async function createScreenAtEnd(
 
   const { error: updateError } = await client.from("walk_screen").update({ current_version: versionId }).eq("id", screenId);
   if (updateError) throw new Error(`createScreenAtEnd: ${updateError.message}`);
+
+  // A flow with no start_screen yet has no main path at all — mainPath() returns []
+  // unconditionally (derive.ts) until one is set, which would otherwise make every
+  // screen an orphan forever on a freshly started flow. The very first screen added
+  // becomes the entry point; every screen after this one just appends normally.
+  const { data: flow, error: flowError } = await client.from("walk_flow").select("start_screen").eq("id", input.flowId).single();
+  if (flowError) throw new Error(`createScreenAtEnd: ${flowError.message}`);
+  if (!flow.start_screen) {
+    const { error: startError } = await client.from("walk_flow").update({ start_screen: screenId }).eq("id", input.flowId);
+    if (startError) throw new Error(`createScreenAtEnd: ${startError.message}`);
+  }
 
   await removeWalkImage(client, staged.storage_path);
   await client.from("walk_staged_image").delete().eq("id", input.stagedId);

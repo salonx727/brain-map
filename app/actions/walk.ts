@@ -10,7 +10,15 @@ import { revalidatePath } from "next/cache";
 import { createPmServiceClient } from "@/lib/pm/serviceClient";
 import { getWalkGraphForNode, listStagedImages } from "@/lib/walk/walkReader";
 import { signWalkImageUrl } from "@/lib/walk/walkStorage";
-import { branchFromScreen, createScreenAtEnd, discardStagedImage, insertScreenBetween, replaceScreenImage, stageImage } from "@/lib/walk/walkWriter";
+import {
+  branchFromScreen,
+  createScreenAtEnd,
+  discardStagedImage,
+  insertScreenBetween,
+  replaceScreenImage,
+  stageImage,
+  startWalkForNode,
+} from "@/lib/walk/walkWriter";
 import type { WalkGraph, WalkStagedImage } from "@/lib/walk/types";
 
 export type WalkGraphWithUrls = WalkGraph & {
@@ -105,6 +113,14 @@ export async function insertScreenBetweenAction(input: {
 export async function branchFromScreenAction(input: { nodeId: string; flowId: string; stagedId: string; fromScreenId: string; title?: string }) {
   const client = createPmServiceClient();
   const result = await branchFromScreen(client, input);
+  revalidatePath("/");
+  return result;
+}
+
+/** Every node's own WALK — Shawn, 2026-09-17. Creates an empty flow (no screens yet) so the tray has something to attach the first upload to. */
+export async function startWalkForNodeAction(input: { nodeId: string; title?: string }) {
+  const client = createPmServiceClient();
+  const result = await startWalkForNode(client, input);
   revalidatePath("/");
   return result;
 }

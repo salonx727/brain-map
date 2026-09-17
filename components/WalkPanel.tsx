@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { getWalkForNodeAction, type WalkGraphWithUrls } from "@/app/actions/walk";
+import { getWalkForNodeAction, startWalkForNodeAction, type WalkGraphWithUrls } from "@/app/actions/walk";
 import { useBrain } from "@/lib/brain";
 import { flowsForNode, laneSequence, lanes, mainPath, orphanScreens, validateFlow } from "@/lib/walk/derive";
 import { WALK_FLAG_LABELS, type WalkFlag, type WalkLane } from "@/lib/walk/types";
@@ -64,6 +64,40 @@ export default function WalkPanel({
   );
 }
 
+/**
+ * Every node's own WALK, not just MUSE's — Shawn, 2026-09-17. A node with no walk_flow row
+ * yet used to be a dead end ("no flows are mapped," full stop, no way to change that). This
+ * creates an empty flow (no screens) so the tray has somewhere to attach the first upload —
+ * createScreenAtEnd sets start_screen from whatever gets added first.
+ */
+function WalkStartPrompt({ nodeId, onChanged }: { nodeId: string; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleStart() {
+    setBusy(true);
+    setError("");
+    try {
+      await startWalkForNodeAction({ nodeId });
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="walk-start">
+      <div className="none">No flows are mapped for this node.</div>
+      <button className="act armed" disabled={busy} onClick={handleStart}>
+        + START WALK FOR THIS NODE
+      </button>
+      {error ? <div className="walk-tray-error">{error}</div> : null}
+    </div>
+  );
+}
+
 function WalkViewer({
   nodeId,
   graph,
@@ -103,6 +137,15 @@ function WalkViewer({
     setPosition(0);
     setVisited(new Set());
   }, [nodeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Only fires on the transition from "no flows yet" to "flows exist" — a node that had
+  // zero walk_flow rows just got its first one (WalkStartPrompt), and flowId's own state
+  // was set to null back when owned was still empty; it never re-derives on its own
+  // because the effect above only re-runs on nodeId, not on every graph refresh (switching
+  // flows by hand shouldn't get silently overridden just because a tray upload refetched).
+  useEffect(() => {
+    if (!flowId && owned.length > 0) setFlowId(owned[0].id);
+  }, [owned, flowId]);
 
   const shownFlows = useMemo(() => {
     const extra = flowId && !owned.some((f) => f.id === flowId) ? graph.flows.find((f) => f.id === flowId) : undefined;
@@ -245,7 +288,7 @@ function WalkViewer({
   }, [goDelta]);
 
   if (owned.length === 0 && !flowId) {
-    return <div className="none">No flows are mapped for this node.</div>;
+    return <WalkStartPrompt nodeId={nodeId} onChanged={onChanged} />;
   }
 
   const touchPoints = currentScreen
