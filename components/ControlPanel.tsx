@@ -27,7 +27,7 @@ import type { ConnectionIntent, ConnectionRelation } from "@/lib/types/pm";
 import ListEditor from "./ListEditor";
 import PrototypePanel from "./PrototypePanel";
 import RulingList from "./RulingList";
-import WalkPanel from "./WalkPanel";
+import WalkPanel, { type WalkLanding } from "./WalkPanel";
 import WirePicker, { optionsFromModel } from "./WirePicker";
 
 /** One past TAGS, and only ever rendered on Shawn's card — see the strip below. */
@@ -105,6 +105,8 @@ export default function ControlPanel({
   const delTimer = useRef<number | null>(null);
   /** The full-sequence view for UI screenshots beyond the first 4 on the card face. */
   const [screensOpen, setScreensOpen] = useState(false);
+  /** Where WALK should land after an exit tile switched this panel to another node. */
+  const [walkLanding, setWalkLanding] = useState<WalkLanding | null>(null);
 
   useEffect(() => {
     return () => {
@@ -214,7 +216,7 @@ export default function ControlPanel({
   }
 
   return (
-    <div id="panel" role="dialog" aria-label="Node control surface">
+    <div id="panel" className={tab === 0 ? "walk-open" : undefined} role="dialog" aria-label="Node control surface">
       <div className="head">
         <div>
           <div className="eyebrow">
@@ -356,6 +358,21 @@ export default function ControlPanel({
 
       {isEngine && tab === PROTOTYPE_TAB && engineKey ? <PrototypePanel engineKey={engineKey} /> : null}
 
+      {/* WALK first in the UI tab — the reference mockup is a bar / stage / strip viewer,
+          and burying it under the screenshot grid plus ADD CARD clipped it to a one-line
+          sliver. Screenshots stay on this tab, below the viewer. */}
+      {tab === 0 ? (
+        <WalkPanel
+          nodeId={d.id}
+          landing={walkLanding}
+          onLandingConsumed={() => setWalkLanding(null)}
+          onOpenNode={(id, landing) => {
+            if (landing) setWalkLanding(landing);
+            onOpenCard(id, 0);
+          }}
+        />
+      ) : null}
+
       {/* UI screenshots — unbounded, oldest first (see types.ts's screens field comment).
           Only the first 4 render here; VIEW ALL reaches the rest. */}
       {tab === 0 ? (
@@ -467,11 +484,6 @@ export default function ControlPanel({
           </div>
         </div>
       ) : null}
-
-      {/* WALK — the step-through UX viewer, spec v1.7 (2026-09-16). Under the UI tab, per
-          node, exactly as the build kit requires; a separate section from the screenshot
-          grid above, not a replacement for it. */}
-      {tab === 0 ? <WalkPanel nodeId={d.id} onOpenNode={(id) => onOpenCard(id, 0)} /> : null}
 
       {/* Same ASK affordance on both lists — Shawn, 2026-09-12: "I should be able to click
           on the blocker and walk through... I cannot do that in the to-do column." The

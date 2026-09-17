@@ -676,6 +676,26 @@ body.wire3d #declare {
   -webkit-backdrop-filter: blur(24px);
   animation: rise 200ms var(--ease);
 }
+/* UI tab carries WALK. Widen and pin the strip so the viewer matches the reference
+   mockup's bar / stage / strip stack, still inside this panel — not a new route and
+   not a full-screen pop-up (BUILD_PROMPT hard constraints 1 and 6). */
+#panel.walk-open {
+  width: min(960px, calc(100vw - 48px));
+  max-height: 90vh;
+  overflow: auto;
+}
+#panel.walk-open > .walk {
+  height: 580px;
+  min-height: 580px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Sticky DONE was painting over the thumbnail strip. On this tab the viewer is the
+   point, so DONE sits after it instead of floating on top of it. */
+#panel.walk-open .savebar {
+  position: static;
+}
 @keyframes rise {
   from {
     opacity: 0;
@@ -1086,41 +1106,41 @@ button.act.armed {
   border-color: var(--baton);
 }
 
-/* ---------- WALK — the step-through UX viewer, spec v1.7 (2026-09-16) ----------
-   Function, not design (Founder ruling): reuses every token and tile convention above
-   rather than a second visual language. Desktop only, no phone layout, no pop-up — the
-   whole thing lives inside the UI tab's own scroll, same as the screenshot grid it sits
-   below. */
+/* ---------- WALK — spec v1.7, layout from WALK_viewer_reference.html ---------- */
 .walk {
   border-top: 1px solid var(--stroke);
-  padding-top: 18px;
+  padding-top: 12px;
+  min-height: 0;
 }
 .walk-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  flex: none;
+  padding-bottom: 8px;
 }
 .walk-flowtab {
-  background: var(--graphite);
-  border: 1px solid var(--stroke);
-  border-radius: 8px;
-  color: var(--text-2);
-  padding: 4px 10px;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  padding: 2px 4px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: default;
 }
 .walk-flowtab.on {
-  border-color: var(--baton);
   color: var(--baton);
+  font-weight: 600;
+  cursor: pointer;
+}
+button.walk-flowtab {
+  cursor: pointer;
 }
 .walk-crumb {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 11px;
   font-family: var(--font-space-mono), monospace;
-  margin-left: 4px;
 }
 .walk-viewtoggle {
   margin-left: auto;
@@ -1132,23 +1152,24 @@ button.act.armed {
   border: 1px solid var(--stroke);
   border-radius: 8px;
   color: var(--text-2);
-  padding: 4px 10px;
-  font-size: 10px;
+  padding: 4px 12px;
+  font-size: 12px;
   cursor: pointer;
 }
 .walk-viewtoggle .tg.act {
+  background: rgba(255, 138, 20, 0.14);
   border-color: var(--baton);
   color: var(--baton);
 }
 .walk .nav {
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--graphite);
   border: 1px solid var(--stroke);
   color: var(--text-2);
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1;
   padding: 0;
   cursor: pointer;
@@ -1158,60 +1179,73 @@ button.act.armed {
   color: var(--baton);
 }
 .walk-stage {
+  flex: 1;
+  min-height: 320px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 14px 0;
+  gap: 28px;
+  padding: 8px 0;
+  background: rgba(255, 255, 255, 0.02);
 }
-.walk-frame {
+.walk-phonewrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.walk-ph {
   position: relative;
-  width: 100%;
-  max-width: 360px;
-  aspect-ratio: 9 / 16;
+  height: 100%;
+  max-height: 640px;
+  aspect-ratio: 9 / 19;
   background: var(--graphite);
   border: 1px solid var(--stroke);
-  border-radius: 14px;
+  border-radius: 24px;
+  padding: 28px 20px;
   overflow: hidden;
 }
-.walk-frame img {
+.walk-ph img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
-.walk-placeholder {
-  width: 100%;
+.walk-ph-bars {
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-3);
-  font-size: 11px;
-  letter-spacing: 0.1em;
+}
+.walk-ln {
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 0 14px;
 }
 .walk-tp {
   position: absolute;
-  width: 26px;
-  height: 26px;
-  margin: -13px 0 0 -13px;
+  width: 32px;
+  height: 32px;
+  margin: -16px 0 0 -16px;
   border-radius: 50%;
   background: var(--baton);
   color: #000;
-  font-weight: 700;
-  font-size: 11px;
+  font-weight: 600;
+  font-size: 13px;
   border: none;
+  padding: 0;
   cursor: pointer;
 }
 .walk-cap {
   text-align: center;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--text-2);
-  margin-top: 6px;
+  margin-top: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  flex: none;
 }
 .walk-flags {
   display: inline-flex;
@@ -1222,33 +1256,38 @@ button.act.armed {
   color: #ba7517;
   border-radius: 4px;
   padding: 0 5px;
-  font-size: 9px;
+  font-size: 10px;
   cursor: default;
 }
 .walk-legend {
-  font-size: 10px;
+  flex: none;
+  font-size: 12px;
   color: var(--text-3);
-  padding: 6px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.walk-strip {
+  padding: 8px 4px;
   border-top: 1px solid var(--stroke);
-  padding-top: 10px;
+}
+.walk-legend-nav {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  border-top: none;
+}
+.walk-grid,
+.walk-chart {
+  flex: none;
+  display: grid;
+  gap: 8px 12px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--stroke);
+  justify-content: center;
   overflow-x: auto;
 }
-.walk-strip-row,
-.walk-chart .walk-strip-row {
-  display: flex;
-  gap: 8px;
-}
-.walk-strip-lane {
-  display: flex;
-  gap: 8px;
-  margin-top: 6px;
-  padding-left: 8px;
-  border-left: 1px dashed #ba7517;
+.walk-chart {
+  flex: 1;
+  min-height: 0;
+  align-content: center;
+  gap: 40px 24px;
+  padding: 24px 0;
 }
 .walk-thumb {
   background: none;
@@ -1258,6 +1297,7 @@ button.act.armed {
   padding: 0;
   width: 72px;
   text-align: center;
+  font-size: 12px;
 }
 .walk-thumb-tile {
   position: relative;
@@ -1267,6 +1307,7 @@ button.act.armed {
   border-radius: 8px;
   overflow: hidden;
   background: var(--graphite);
+  margin-bottom: 3px;
 }
 .walk-thumb.on .walk-thumb-tile {
   border: 2px solid var(--baton);
@@ -1283,12 +1324,14 @@ button.act.armed {
 }
 .walk-thumb-empty {
   position: absolute;
-  inset: 0;
+  inset: 8px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  color: var(--text-3);
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.walk-thumb-empty .walk-ln {
+  height: 6px;
+  margin-bottom: 6px;
 }
 .walk-thumb-branch {
   position: absolute;
@@ -1307,65 +1350,76 @@ button.act.armed {
 }
 .walk-thumb-id {
   display: block;
-  font-size: 9px;
-  margin-top: 3px;
+  font-size: 12px;
   color: var(--text-3);
 }
-.walk-endtile {
+.walk-thumb.on {
+  color: var(--baton);
+}
+.walk-mk {
   height: 92px;
-  width: 84px;
   border: 1px dashed var(--stroke);
   border-radius: 8px;
-  background: var(--graphite);
-  color: var(--text-2);
-  font-size: 9px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+  background: transparent;
   cursor: default;
   padding: 4px;
+  text-align: center;
 }
 .walk-exit {
   cursor: pointer;
-  border-color: var(--baton);
-  color: var(--baton);
-}
-.walk-chart {
-  overflow-x: auto;
-  padding: 10px 0;
-}
-.walk-chart-from {
-  font-size: 9px;
-  color: var(--text-3);
-  width: 100%;
+  border-color: var(--stroke);
 }
 .walk-box {
-  background: var(--graphite);
+  position: relative;
+  cursor: pointer;
   border: 1px solid var(--stroke);
   border-radius: 8px;
-  color: var(--text-2);
-  width: 150px;
-  padding: 8px;
+  background: var(--graphite);
+  padding: 10px;
   text-align: center;
-  cursor: pointer;
+  color: var(--text-2);
 }
 .walk-box b {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
 }
 .walk-box span {
   display: block;
-  font-size: 9px;
   color: var(--text-3);
-  margin-top: 2px;
+  font-size: 12px;
+}
+.walk-box-lane {
+  border-style: dashed;
+  border-color: #ba7517;
 }
 .walk-box.on {
-  border-color: var(--baton);
-  background: rgba(255, 138, 20, 0.12);
+  border: 2px solid var(--baton);
+  background: rgba(255, 138, 20, 0.14);
 }
 .walk-box.visited {
-  border-color: rgba(255, 138, 20, 0.5);
+  border-color: var(--baton);
+}
+.walk-chart-from {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -22px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.walk-ar {
+  position: absolute;
+  right: -18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  font-size: 14px;
 }
 
 /* ---------- intake: drag and drop does not exist on a phone ---------- */

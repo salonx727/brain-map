@@ -1,19 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { getWalkForNodeAction, type WalkGraphWithUrls } from "@/app/actions/walk";
+import { useBrain } from "@/lib/brain";
 import { flowsForNode, laneSequence, lanes, mainPath, validateFlow } from "@/lib/walk/derive";
 import type { WalkFlag, WalkLane } from "@/lib/walk/types";
 
 type View = "images" | "chart";
 
+export type WalkLanding = { flowId: string; screenId: string };
+
 /**
  * WALK — the step-through UX viewer, spec v1.7. Function, not design (Founder ruling
- * 2026-09-16): this renders exactly what the spec asks for and nothing decorative on top.
+ * 2026-09-16). Layout follows reference/WALK_viewer_reference.html so the fixture reads
+ * the same as the mockup Shawn signed off; the rulings in spec §1 stay binding.
  * Mounted inside the existing UI tab (ControlPanel.tsx, tab === 0), never a route or a
  * pop-up of its own — BUILD_PROMPT.md hard constraint 1 and 6.
  */
-export default function WalkPanel({ nodeId, onOpenNode }: { nodeId: string; onOpenNode: (nodeId: string) => void }) {
+export default function WalkPanel({
+  nodeId,
+  landing,
+  onLandingConsumed,
+  onOpenNode,
+}: {
+  nodeId: string;
+  landing?: WalkLanding | null;
+  onLandingConsumed?: () => void;
+  onOpenNode: (nodeId: string, landing?: WalkLanding) => void;
+}) {
   const [state, setState] = useState<
     { status: "loading" } | { status: "error"; message: string } | { status: "ready"; graph: WalkGraphWithUrls }
   >({ status: "loading" });
@@ -35,36 +49,61 @@ export default function WalkPanel({ nodeId, onOpenNode }: { nodeId: string; onOp
 
   if (state.status === "loading") return <div className="none">Loading WALK…</div>;
   if (state.status === "error") return <div className="none">{state.message}</div>;
-  return <WalkViewer nodeId={nodeId} graph={state.graph} onOpenNode={onOpenNode} />;
+  return (
+    <WalkViewer
+      nodeId={nodeId}
+      graph={state.graph}
+      landing={landing}
+      onLandingConsumed={onLandingConsumed}
+      onOpenNode={onOpenNode}
+    />
+  );
 }
 
-function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: WalkGraphWithUrls; onOpenNode: (nodeId: string) => void }) {
-  const flows = useMemo(() => flowsForNode(graph, nodeId), [graph, nodeId]);
-  const [flowId, setFlowId] = useState<string | null>(flows[0]?.id ?? null);
-  const [laneIndex, setLaneIndex] = useState<number | null>(null); // null = main path
+function WalkViewer({
+  nodeId,
+  graph,
+  landing,
+  onLandingConsumed,
+  onOpenNode,
+}: {
+  nodeId: string;
+  graph: WalkGraphWithUrls;
+  landing?: WalkLanding | null;
+  onLandingConsumed?: () => void;
+  onOpenNode: (nodeId: string, landing?: WalkLanding) => void;
+}) {
+  const { model } = useBrain();
+  const owned = useMemo(() => flowsForNode(graph, nodeId), [graph, nodeId]);
+  const [flowId, setFlowId] = useState<string | null>(owned[0]?.id ?? null);
+  const [laneIndex, setLaneIndex] = useState<number | null>(null);
   const [position, setPosition] = useState(0);
   const [view, setView] = useState<View>("images");
   const [visited, setVisited] = useState<Set<string>>(new Set());
+  const [flash, setFlash] = useState("");
   const stageRef = useRef<HTMLDivElement>(null);
 
-  // A different node was selected — start over rather than carry stale flow/lane state
-  // into a graph that may not contain it at all.
   useEffect(() => {
-    setFlowId(flows[0]?.id ?? null);
+    if (landing?.flowId) {
+      setFlowId(landing.flowId);
+      setLaneIndex(null);
+      setVisited(new Set());
+      return;
+    }
+    setFlowId(owned[0]?.id ?? null);
     setLaneIndex(null);
     setPosition(0);
     setVisited(new Set());
   }, [nodeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const shownFlows = useMemo(() => {
+    const extra = flowId && !owned.some((f) => f.id === flowId) ? graph.flows.find((f) => f.id === flowId) : undefined;
+    return extra ? [...owned, extra] : owned;
+  }, [owned, flowId, graph.flows]);
+
   const flowLanes = useMemo<WalkLane[]>(() => (flowId ? lanes(graph, flowId) : []), [graph, flowId]);
   const main = useMemo(() => (flowId ? mainPath(graph, flowId) : []), [graph, flowId]);
   const flags = useMemo<WalkFlag[]>(() => (flowId ? validateFlow(graph, flowId) : []), [graph, flowId]);
-  // V1/V3/V4 target a screen id directly; V2/V5 target a touch point id (see derive.ts's
-  // validateFlow) — resolved back to that touch point's own screen here, once, so every
-  // caller can just ask "what's flagged on this screen" without knowing which rule keys
-  // on what. Without this resolution M4.T1's "check position" flag computes correctly but
-  // never appears anywhere a person can see it — ACCEPTANCE.md #14 needs it visible, not
-  // just derivable.
   const flagsByScreen = useMemo(() => {
     const touchPointScreen = new Map(graph.touchPoints.map((t) => [t.id, t.screenId]));
     const m = new Map<string, WalkFlag[]>();
@@ -84,6 +123,14 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
     return lane ? laneSequence(graph, flowId, lane) : main;
   }, [graph, flowId, laneIndex, flowLanes, main]);
 
+  useEffect(() => {
+    if (!landing?.screenId) return;
+    const seq = landing.flowId ? mainPath(graph, landing.flowId) : sequence;
+    const idx = seq.indexOf(landing.screenId);
+    setPosition(idx >= 0 ? idx : 0);
+    onLandingConsumed?.();
+  }, [landing?.flowId, landing?.screenId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const currentScreenId = sequence[position];
   const currentScreen = graph.screens.find((s) => s.id === currentScreenId);
 
@@ -92,21 +139,32 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
     setVisited((prev) => (prev.has(currentScreenId) ? prev : new Set(prev).add(currentScreenId)));
   }, [currentScreenId]);
 
+  const goToFlowScreen = useCallback(
+    (targetFlowId: string, screenId: string) => {
+      setFlowId(targetFlowId);
+      setLaneIndex(null);
+      const seq = mainPath(graph, targetFlowId);
+      const idx = seq.indexOf(screenId);
+      setPosition(idx >= 0 ? idx : 0);
+    },
+    [graph],
+  );
+
   const handleExit = useCallback(
     (exit: { node: string; flow: string; screen: string }) => {
-      if (exit.node !== nodeId) {
-        onOpenNode(exit.node);
+      if (exit.node !== nodeId && model.nodes[exit.node]) {
+        onOpenNode(exit.node, { flowId: exit.flow, screenId: exit.screen });
         return;
       }
-      setFlowId(exit.flow);
-      setLaneIndex(null);
-      setPosition(0);
+      setFlash(`Exit: opens the ${graph.flows.find((f) => f.id === exit.flow)?.title ?? exit.flow} flow strip`);
+      goToFlowScreen(exit.flow, exit.screen);
     },
-    [nodeId, onOpenNode],
+    [nodeId, model.nodes, onOpenNode, graph.flows, goToFlowScreen],
   );
 
   const navigateTo = useCallback(
     (screenId: string) => {
+      setFlash("");
       const inCurrent = sequence.indexOf(screenId);
       if (inCurrent >= 0) {
         setPosition(inCurrent);
@@ -121,9 +179,10 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
           return;
         }
       }
-      const exitLane = flowLanes.find((l) => l.end.type === "exit" && l.end.screen === screenId);
-      if (exitLane && exitLane.end.type === "exit") {
-        handleExit(exitLane.end);
+      const dest = graph.screens.find((s) => s.id === screenId);
+      if (dest && dest.flowId !== flowId) {
+        const destFlow = graph.flows.find((f) => f.id === dest.flowId);
+        handleExit({ node: destFlow?.nodeId ?? "", flow: dest.flowId, screen: dest.id });
       }
     },
     [sequence, flowLanes, flowId, graph, handleExit],
@@ -131,6 +190,7 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
 
   const goDelta = useCallback(
     (delta: number) => {
+      setFlash("");
       setPosition((p) => Math.max(0, Math.min(sequence.length - 1, p + delta)));
     },
     [sequence.length],
@@ -138,6 +198,7 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLElement && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
       if (e.key === "ArrowLeft") goDelta(-1);
       if (e.key === "ArrowRight") goDelta(1);
     }
@@ -158,7 +219,7 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
       if (Math.abs(dx) > 40) goDelta(dx < 0 ? 1 : -1);
       touchStartX = null;
     }
-    el.addEventListener("touchstart", onTouchStart);
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchend", onTouchEnd);
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
@@ -166,20 +227,31 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
     };
   }, [goDelta]);
 
-  if (flows.length === 0) {
+  if (owned.length === 0 && !flowId) {
     return <div className="none">No flows are mapped for this node.</div>;
   }
 
-  const touchPoints = currentScreen ? graph.touchPoints.filter((t) => t.screenId === currentScreen.id).sort((a, b) => a.n - b.n) : [];
+  const touchPoints = currentScreen
+    ? graph.touchPoints.filter((t) => t.screenId === currentScreen.id).sort((a, b) => a.n - b.n)
+    : [];
   const currentVersionId = currentScreen?.currentVersion ?? null;
   const imageUrl = currentVersionId ? graph.signedUrls[currentVersionId] : null;
   const screenFlags = currentScreen ? (flagsByScreen.get(currentScreen.id) ?? []) : [];
 
   return (
-    <div className="walk sect">
+    <div className="walk">
       <div className="walk-bar">
-        {flows.map((f) => (
-          <button key={f.id} className={"walk-flowtab" + (f.id === flowId ? " on" : "")} onClick={() => { setFlowId(f.id); setLaneIndex(null); setPosition(0); }}>
+        {shownFlows.map((f) => (
+          <button
+            key={f.id}
+            className={"walk-flowtab" + (f.id === flowId ? " on" : "")}
+            onClick={() => {
+              setFlowId(f.id);
+              setLaneIndex(null);
+              setPosition(0);
+              setFlash("");
+            }}
+          >
             {f.title}
           </button>
         ))}
@@ -188,202 +260,304 @@ function WalkViewer({ nodeId, graph, onOpenNode }: { nodeId: string; graph: Walk
           {laneIndex !== null ? " · branch lane" : ""}
         </span>
         <span className="walk-viewtoggle">
-          <button className={"tg" + (view === "images" ? " act" : "")} onClick={() => setView("images")}>Images</button>
-          <button className={"tg" + (view === "chart" ? " act" : "")} onClick={() => setView("chart")}>Chart</button>
+          <button className={"tg" + (view === "images" ? " act" : "")} onClick={() => setView("images")}>
+            Images
+          </button>
+          <button className={"tg" + (view === "chart" ? " act" : "")} onClick={() => setView("chart")}>
+            Chart
+          </button>
         </span>
       </div>
 
       {view === "images" ? (
-        <ImageView
-          stageRef={stageRef}
-          screenId={currentScreenId}
-          screenTitle={currentScreen?.title ?? currentScreenId ?? ""}
-          imageUrl={imageUrl}
-          touchPoints={touchPoints}
-          screenFlags={screenFlags}
-          onPrev={() => goDelta(-1)}
-          onNext={() => goDelta(1)}
-          onTouchPointClick={(toScreen) => navigateTo(toScreen)}
-          main={main}
-          lanesList={flowLanes}
-          currentScreenId={currentScreenId}
-          onThumbnailClick={navigateTo}
-          onExitClick={handleExit}
-          graph={graph}
-          flagsByScreen={flagsByScreen}
-        />
+        <>
+          <div className="walk-stage" ref={stageRef}>
+            <button className="nav" aria-label="Previous" onClick={() => goDelta(-1)}>
+              ‹
+            </button>
+            <div className="walk-phonewrap">
+              <PhoneFrame
+                screenId={currentScreenId}
+                screenTitle={currentScreen?.title ?? currentScreenId ?? ""}
+                imageUrl={imageUrl}
+                touchPoints={touchPoints}
+                onTouchPointClick={(toScreen) => {
+                  const dest = graph.screens.find((s) => s.id === toScreen);
+                  if (dest && dest.flowId !== flowId) {
+                    const destFlow = graph.flows.find((f) => f.id === dest.flowId);
+                    handleExit({ node: destFlow?.nodeId ?? "", flow: dest.flowId, screen: dest.id });
+                    return;
+                  }
+                  navigateTo(toScreen);
+                }}
+              />
+              <div className="walk-cap">
+                {currentScreenId} — {currentScreen?.title ?? ""}
+                {screenFlags.length ? (
+                  <span className="walk-flags">
+                    {screenFlags.map((f, i) => (
+                      <span key={i} className="walk-flag" title={f.reason}>
+                        {f.rule}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <button className="nav" aria-label="Next" onClick={() => goDelta(1)}>
+              ›
+            </button>
+          </div>
+          <div className="walk-legend">
+            {flash
+              ? flash
+              : touchPoints.length === 0
+                ? "End of flow"
+                : touchPoints
+                    .map((tp) => {
+                      const dest = graph.screens.find((s) => s.id === tp.toScreen);
+                      const destFlow = dest ? graph.flows.find((f) => f.id === dest.flowId) : undefined;
+                      const destLabel =
+                        dest && dest.flowId !== flowId ? destFlow?.title ?? tp.toScreen : tp.toScreen;
+                      return `T${tp.n} → ${destLabel}${tp.n === 1 ? " (main path)" : ""} · authored`;
+                    })
+                    .join("   ·   ")}
+          </div>
+          <WalkGrid
+            main={main}
+            lanesList={flowLanes}
+            currentScreenId={currentScreenId}
+            graph={graph}
+            flagsByScreen={flagsByScreen}
+            mode="images"
+            visited={visited}
+            onScreenClick={navigateTo}
+            onExitClick={handleExit}
+            nodeId={nodeId}
+          />
+        </>
       ) : (
-        <ChartView
-          main={main}
-          lanesList={flowLanes}
-          currentScreenId={currentScreenId}
-          visited={visited}
-          graph={graph}
-          onBoxClick={navigateTo}
-          onExitClick={handleExit}
-          onPrev={() => goDelta(-1)}
-          onNext={() => goDelta(1)}
-        />
+        <>
+          <WalkGrid
+            main={main}
+            lanesList={flowLanes}
+            currentScreenId={currentScreenId}
+            graph={graph}
+            flagsByScreen={flagsByScreen}
+            mode="chart"
+            visited={visited}
+            onScreenClick={navigateTo}
+            onExitClick={handleExit}
+            nodeId={nodeId}
+          />
+          <div className="walk-legend walk-legend-nav">
+            <button className="nav" aria-label="Previous" onClick={() => goDelta(-1)}>
+              ‹
+            </button>
+            <button className="nav" aria-label="Next" onClick={() => goDelta(1)}>
+              ›
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function ImageView({
-  stageRef,
+/** Gray-bar widths from the reference mockup so MUSE's placeholder screens read the same. */
+const PLACEHOLDER_BARS: Record<string, number[]> = {
+  M1: [70, 90, 50],
+  M2: [60, 90, 90, 90],
+  M3: [80, 90, 60, 90],
+  M4: [60, 90, 50, 90],
+  M5: [90, 70, 90],
+  M6: [50, 70],
+  X1: [90, 90, 60],
+  P1: [70, 90, 50],
+  P2: [60, 80, 70],
+};
+
+function placeholderBars(id: string): number[] {
+  if (PLACEHOLDER_BARS[id]) return PLACEHOLDER_BARS[id];
+  let n = 0;
+  for (const c of id) n = (n * 31 + c.charCodeAt(0)) >>> 0;
+  const count = 2 + (n % 3);
+  return Array.from({ length: count }, (_, i) => 50 + ((n >> (i * 5)) % 41));
+}
+
+function PhoneFrame({
   screenId,
   screenTitle,
   imageUrl,
   touchPoints,
-  screenFlags,
-  onPrev,
-  onNext,
   onTouchPointClick,
-  main,
-  lanesList,
-  currentScreenId,
-  onThumbnailClick,
-  onExitClick,
-  graph,
-  flagsByScreen,
 }: {
-  stageRef: React.RefObject<HTMLDivElement | null>;
   screenId: string | undefined;
   screenTitle: string;
   imageUrl: string | null;
   touchPoints: { id: string; n: number; x: number; y: number; action: string; toScreen: string }[];
-  screenFlags: WalkFlag[];
-  onPrev: () => void;
-  onNext: () => void;
   onTouchPointClick: (toScreen: string) => void;
-  main: string[];
-  lanesList: WalkLane[];
-  currentScreenId: string | undefined;
-  onThumbnailClick: (screenId: string) => void;
-  onExitClick: (exit: { node: string; flow: string; screen: string }) => void;
-  graph: WalkGraphWithUrls;
-  flagsByScreen: Map<string, WalkFlag[]>;
 }) {
   return (
-    <>
-      <div className="walk-stage" ref={stageRef}>
-        <button className="nav" aria-label="Previous" onClick={onPrev}>
-          ‹
-        </button>
-        <div className="walk-frame">
-          {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl} alt={screenTitle} />
-          ) : (
-            <div className="walk-placeholder">no image</div>
-          )}
-          {touchPoints.map((tp) => (
-            <button
-              key={tp.id}
-              className="walk-tp"
-              style={{ left: `${tp.x}%`, top: `${tp.y}%` }}
-              title={tp.action}
-              onClick={() => onTouchPointClick(tp.toScreen)}
-            >
-              {tp.n}
-            </button>
+    <div className="walk-ph">
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageUrl} alt={screenTitle} />
+      ) : (
+        <div className="walk-ph-bars" aria-label="no image">
+          {placeholderBars(screenId ?? "").map((w, i) => (
+            <div key={i} className="walk-ln" style={{ width: `${w}%` }} />
           ))}
         </div>
-        <button className="nav" aria-label="Next" onClick={onNext}>
-          ›
+      )}
+      {touchPoints.map((tp) => (
+        <button
+          key={tp.id}
+          className="walk-tp"
+          style={{ left: `${tp.x}%`, top: `${tp.y}%` }}
+          title={tp.action}
+          onClick={() => onTouchPointClick(tp.toScreen)}
+        >
+          {tp.n}
         </button>
-      </div>
-      <div className="walk-cap">
-        {screenId} · {screenTitle}
-        {screenFlags.length ? (
-          <span className="walk-flags">
-            {screenFlags.map((f, i) => (
-              <span key={i} className="walk-flag" title={f.reason}>
-                {f.rule}
-              </span>
-            ))}
-          </span>
-        ) : null}
-      </div>
-      <div className="walk-legend">
-        {touchPoints.length === 0 ? (
-          <span>No touch points on this screen.</span>
-        ) : (
-          touchPoints.map((tp) => (
-            <span key={tp.id} className="walk-legend-line">
-              T{tp.n} → {tp.toScreen} {tp.n === 1 ? "(main path)" : ""} · {tp.action} · authored
-            </span>
-          ))
-        )}
-      </div>
-      <WalkStrip
-        main={main}
-        lanesList={lanesList}
-        currentScreenId={currentScreenId}
-        graph={graph}
-        flagsByScreen={flagsByScreen}
-        onThumbnailClick={onThumbnailClick}
-        onExitClick={onExitClick}
-      />
-    </>
+      ))}
+    </div>
   );
 }
 
-function WalkStrip({
+function exitLabel(
+  graph: WalkGraphWithUrls,
+  end: { flow: string; node: string },
+  nodeId: string,
+  nodeName?: string,
+): string {
+  const flow = graph.flows.find((f) => f.id === end.flow);
+  const title = flow?.title ?? "exit";
+  if (end.node && end.node !== nodeId && nodeName) return `${nodeName} ↗`;
+  return `${title} ↗`;
+}
+
+function WalkGrid({
   main,
   lanesList,
   currentScreenId,
   graph,
   flagsByScreen,
-  onThumbnailClick,
+  mode,
+  visited,
+  onScreenClick,
   onExitClick,
+  nodeId,
 }: {
   main: string[];
   lanesList: WalkLane[];
   currentScreenId: string | undefined;
   graph: WalkGraphWithUrls;
   flagsByScreen: Map<string, WalkFlag[]>;
-  onThumbnailClick: (screenId: string) => void;
+  mode: View;
+  visited: Set<string>;
+  onScreenClick: (screenId: string) => void;
   onExitClick: (exit: { node: string; flow: string; screen: string }) => void;
+  nodeId: string;
 }) {
+  const { model } = useBrain();
+  const cols = Math.max(main.length, 1);
   const branchPoints = new Set(lanesList.map((l) => l.from));
+
   return (
-    <div className="walk-strip">
-      <div className="walk-strip-row">
-        {main.map((id) => (
-          <Thumb
+    <div
+      className={mode === "chart" ? "walk-chart" : "walk-grid"}
+      style={{ gridTemplateColumns: `repeat(${cols}, ${mode === "chart" ? "minmax(0, 150px)" : "72px"})` }}
+    >
+      {main.map((id, k) =>
+        mode === "chart" ? (
+          <ChartBox
             key={id}
             id={id}
-            graph={graph}
-            flagsByScreen={flagsByScreen}
-            branch={branchPoints.has(id)}
+            title={graph.screens.find((s) => s.id === id)?.title ?? ""}
             current={id === currentScreenId}
-            onClick={() => onThumbnailClick(id)}
+            visited={visited.has(id)}
+            branch={branchPoints.has(id)}
+            arrow={k < main.length - 1}
+            style={{ gridColumn: k + 1, gridRow: 1 }}
+            onClick={() => onScreenClick(id)}
           />
-        ))}
-      </div>
-      {lanesList.map((lane, i) => (
-        <div className="walk-strip-lane" key={i} style={{ marginLeft: `${main.indexOf(lane.from) * 84}px` }}>
-          {lane.screens.map((id) => (
+        ) : (
+          <div key={id} style={{ gridColumn: k + 1, gridRow: 1 }}>
             <Thumb
-              key={id}
               id={id}
               graph={graph}
               flagsByScreen={flagsByScreen}
-              dashed
+              branch={branchPoints.has(id)}
               current={id === currentScreenId}
-              onClick={() => onThumbnailClick(id)}
+              onClick={() => onScreenClick(id)}
             />
-          ))}
-          {lane.end.type === "rejoin" ? (
-            <div className="walk-endtile walk-rejoin">rejoin {lane.end.screen}</div>
-          ) : lane.end.type === "exit" ? (
-            <button className="walk-endtile walk-exit" onClick={() => onExitClick(lane.end as { node: string; flow: string; screen: string })}>
-              {graph.flows.find((f) => f.id === (lane.end as { flow: string }).flow)?.title ?? "exit"}
-            </button>
-          ) : null}
-        </div>
-      ))}
+          </div>
+        ),
+      )}
+      {lanesList.map((lane, i) => {
+        const fromIdx = main.indexOf(lane.from);
+        const row =
+          2 +
+          lanesList
+            .slice(0, i)
+            .filter((other) => main.indexOf(other.from) === fromIdx).length;
+        const fromCol = fromIdx + 1;
+        const startCol = Math.max(1, fromCol + 1);
+        return (
+          <span key={i} style={{ display: "contents" }}>
+            {lane.screens.map((id, j) =>
+              mode === "chart" ? (
+                <ChartBox
+                  key={id}
+                  id={id}
+                  title={graph.screens.find((s) => s.id === id)?.title ?? ""}
+                  current={id === currentScreenId}
+                  visited={visited.has(id)}
+                  dashed
+                  from={j === 0 ? lane.from : undefined}
+                  arrow={j < lane.screens.length - 1 || lane.end.type !== "end"}
+                  style={{ gridColumn: startCol + j, gridRow: row }}
+                  onClick={() => onScreenClick(id)}
+                />
+              ) : (
+                <div key={id} style={{ gridColumn: startCol + j, gridRow: row }}>
+                  <Thumb
+                    id={id}
+                    graph={graph}
+                    flagsByScreen={flagsByScreen}
+                    dashed
+                    current={id === currentScreenId}
+                    onClick={() => onScreenClick(id)}
+                  />
+                </div>
+              ),
+            )}
+            {lane.end.type === "rejoin" ? (
+              <div
+                className="walk-mk"
+                style={{
+                  gridColumn: Math.max(startCol + lane.screens.length, main.indexOf(lane.end.screen) + 1),
+                  gridRow: row,
+                }}
+              >
+                rejoin {lane.end.screen}
+              </div>
+            ) : lane.end.type === "exit" ? (
+              <button
+                className="walk-mk walk-exit"
+                style={{ gridColumn: startCol + lane.screens.length, gridRow: row }}
+                onClick={() => onExitClick(lane.end as { node: string; flow: string; screen: string })}
+              >
+                {mode === "chart" ? (
+                  <span className="walk-chart-from">↓ from {lane.from}</span>
+                ) : null}
+                {exitLabel(graph, lane.end, nodeId, model.nodes[lane.end.node]?.name)}
+              </button>
+            ) : null}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -420,7 +594,11 @@ function Thumb({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt={id} />
         ) : (
-          <span className="walk-thumb-empty">{id}</span>
+          <span className="walk-thumb-empty">
+            {placeholderBars(id).map((w, i) => (
+              <span key={i} className="walk-ln" style={{ width: `${w}%` }} />
+            ))}
+          </span>
         )}
         {branch ? <span className="walk-thumb-branch">*</span> : null}
         {flags.length ? <span className="walk-thumb-badge">!</span> : null}
@@ -430,73 +608,42 @@ function Thumb({
   );
 }
 
-function ChartView({
-  main,
-  lanesList,
-  currentScreenId,
+function ChartBox({
+  id,
+  title,
+  current,
   visited,
-  graph,
-  onBoxClick,
-  onExitClick,
-  onPrev,
-  onNext,
+  branch,
+  dashed,
+  from,
+  arrow,
+  style,
+  onClick,
 }: {
-  main: string[];
-  lanesList: WalkLane[];
-  currentScreenId: string | undefined;
-  visited: Set<string>;
-  graph: WalkGraphWithUrls;
-  onBoxClick: (screenId: string) => void;
-  onExitClick: (exit: { node: string; flow: string; screen: string }) => void;
-  onPrev: () => void;
-  onNext: () => void;
+  id: string;
+  title: string;
+  current: boolean;
+  visited: boolean;
+  branch?: boolean;
+  dashed?: boolean;
+  from?: string;
+  arrow?: boolean;
+  style: CSSProperties;
+  onClick: () => void;
 }) {
-  const branchPoints = new Set(lanesList.map((l) => l.from));
-  function Box({ id }: { id: string }) {
-    const screen = graph.screens.find((s) => s.id === id);
-    return (
-      <button
-        className={"walk-box" + (id === currentScreenId ? " on" : "") + (visited.has(id) ? " visited" : "")}
-        onClick={() => onBoxClick(id)}
-      >
-        <b>{id}</b>
-        <span>{screen?.title ?? ""}</span>
-        {branchPoints.has(id) ? <span className="walk-thumb-branch">*</span> : null}
-      </button>
-    );
-  }
   return (
-    <>
-      <div className="walk-chart">
-        <div className="walk-strip-row">
-          {main.map((id) => (
-            <Box key={id} id={id} />
-          ))}
-        </div>
-        {lanesList.map((lane, i) => (
-          <div className="walk-strip-lane" key={i} style={{ marginLeft: `${main.indexOf(lane.from) * 174}px` }}>
-            <div className="walk-chart-from">from {lane.from}</div>
-            {lane.screens.map((id) => (
-              <Box key={id} id={id} />
-            ))}
-            {lane.end.type === "rejoin" ? (
-              <div className="walk-endtile walk-rejoin">rejoin {lane.end.screen}</div>
-            ) : lane.end.type === "exit" ? (
-              <button className="walk-endtile walk-exit" onClick={() => onExitClick(lane.end as { node: string; flow: string; screen: string })}>
-                {graph.flows.find((f) => f.id === (lane.end as { flow: string }).flow)?.title ?? "exit"}
-              </button>
-            ) : null}
-          </div>
-        ))}
-      </div>
-      <div className="walk-legend" style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 }}>
-        <button className="nav" aria-label="Previous" onClick={onPrev}>
-          ‹
-        </button>
-        <button className="nav" aria-label="Next" onClick={onNext}>
-          ›
-        </button>
-      </div>
-    </>
+    <button
+      className={
+        "walk-box" + (current ? " on" : "") + (visited && !current ? " visited" : "") + (dashed ? " walk-box-lane" : "")
+      }
+      style={style}
+      onClick={onClick}
+    >
+      {from ? <span className="walk-chart-from">↓ from {from}</span> : null}
+      <b>{id}</b>
+      <span>{title}</span>
+      {branch ? <span className="walk-thumb-branch">*</span> : null}
+      {arrow ? <span className="walk-ar">→</span> : null}
+    </button>
   );
 }
