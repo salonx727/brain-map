@@ -753,12 +753,16 @@ export default function ControlPanel({
 
       {/* Salman, 2026-09-16: only on the card's own face, not inside any category tab —
           clicking into UI/BLK/whatever is looking at that category's own content, not a
-          place to reach for wiring a new card from. */}
+          place to reach for wiring a new card from.
+
+          Shawn, 2026-09-17: one button hid two different things — a sub (nested under
+          this card, wired to it) and a new standalone module (its own card, wired to
+          nothing). Both call the same addNode; the only difference is wireTo. */}
       {tab === null ? (
-        <div style={{ paddingTop: 6 }}>
+        <div style={{ paddingTop: 6, display: "flex", gap: 8 }}>
           <button
             className="act armed"
-            style={{ width: "100%", padding: 14, fontSize: 10 }}
+            style={{ flex: 1, padding: 14, fontSize: 10 }}
             onClick={() => {
               const spot = freeSpot(model.nodes, model.order, d.id, "box");
               void addNode({ x: spot.x, y: spot.y, wireTo: d.id }).then((id) => {
@@ -766,7 +770,19 @@ export default function ControlPanel({
               });
             }}
           >
-            ADD A SUB NODE OR MODULE
+            ADD A SUB
+          </button>
+          <button
+            className="act armed"
+            style={{ flex: 1, padding: 14, fontSize: 10 }}
+            onClick={() => {
+              const spot = freeSpot(model.nodes, model.order, d.id, "box");
+              void addNode({ x: spot.x, y: spot.y, wireTo: null }).then((id) => {
+                if (id) onOpenCard(id, null);
+              });
+            }}
+          >
+            ADD A NEW MODULE
           </button>
         </div>
       ) : null}
