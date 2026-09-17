@@ -685,11 +685,13 @@ body.wire3d #declare {
   overflow: auto;
 }
 #panel.walk-open > .walk {
-  height: 580px;
-  min-height: 580px;
+  /* No fixed height here on purpose — that was clipping real content the moment the
+     strip grew past one lane, or the staging tray was added below it (both invisible,
+     not just cut off, since this also carried overflow: hidden). #panel.walk-open's own
+     max-height + overflow: auto already scrolls the whole panel; .walk just needs to be
+     exactly as tall as what's actually in it. */
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 /* Sticky DONE was painting over the thumbnail strip. On this tab the viewer is the
    point, so DONE sits after it instead of floating on top of it. */
