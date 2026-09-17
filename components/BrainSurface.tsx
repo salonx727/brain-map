@@ -5,7 +5,7 @@ import { BrainProvider, useBrain } from "@/lib/brain";
 import { IntakeProvider } from "@/lib/intake";
 import { upsertLayoutPositionAction } from "@/app/actions/pm";
 import { SIZE } from "@/lib/seed";
-import { balanceLayout, collides, linksOf, otherEnd, realignGrid } from "@/lib/graph";
+import { balanceLayout, linksOf, otherEnd, realignGrid } from "@/lib/graph";
 import { blockerAskDraft } from "@/lib/ai/blockerAsk";
 import type { Model } from "@/lib/types";
 import type { ReconcileCandidate } from "@/lib/pm/rulingReader";
@@ -796,22 +796,6 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
             SCREEN
           </button>
         </div>
-        <button
-          className="act"
-          onClick={() => {
-            const vp = viewportRef.current;
-            if (!vp) return;
-            const v = view.current;
-            const x = Math.round((vp.clientWidth / 2 - v.x) / v.k) - 95;
-            let y = Math.round((vp.clientHeight / 2 - v.y) / v.k) - 58;
-            while (collides(model.nodes, model.order, x, y, "box")) y += 172;
-            void brain.addNode({ x, y }).then((id) => {
-              if (id) control(id, null);
-            });
-          }}
-        >
-          ADD CARD
-        </button>
       </div>
 
       {roster ? (
