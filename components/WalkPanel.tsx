@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { getWalkForNodeAction, startWalkForNodeAction, type WalkGraphWithUrls } from "@/app/actions/walk";
+import { getWalkForNodeAction, hideScreenAction, startWalkForNodeAction, type WalkGraphWithUrls } from "@/app/actions/walk";
 import { useBrain } from "@/lib/brain";
 import { flowsForNode, laneSequence, lanes, mainPath, orphanScreens, validateFlow } from "@/lib/walk/derive";
 import { WALK_FLAG_LABELS, type WalkFlag, type WalkLane } from "@/lib/walk/types";
@@ -204,6 +204,19 @@ function WalkViewer({
     [graph],
   );
 
+  const handleRemoveOrphan = useCallback(
+    async (screenId: string) => {
+      if (orphanView === screenId) setOrphanView(null);
+      try {
+        await hideScreenAction({ nodeId, screenId });
+        onChanged();
+      } catch (e) {
+        setFlash(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [nodeId, onChanged, orphanView],
+  );
+
   const handleExit = useCallback(
     (exit: { node: string; flow: string; screen: string }) => {
       if (exit.node !== nodeId && model.nodes[exit.node]) {
@@ -399,6 +412,7 @@ function WalkViewer({
             visited={visited}
             onScreenClick={navigateTo}
             onExitClick={handleExit}
+            onRemoveOrphan={handleRemoveOrphan}
             nodeId={nodeId}
           />
         </>
@@ -517,6 +531,7 @@ function WalkGrid({
   visited,
   onScreenClick,
   onExitClick,
+  onRemoveOrphan,
   nodeId,
 }: {
   main: string[];
@@ -529,6 +544,7 @@ function WalkGrid({
   visited: Set<string>;
   onScreenClick: (screenId: string) => void;
   onExitClick: (exit: { node: string; flow: string; screen: string }) => void;
+  onRemoveOrphan?: (screenId: string) => void;
   nodeId: string;
 }) {
   const { model } = useBrain();
@@ -562,6 +578,11 @@ function WalkGrid({
               branch={branchPoints.has(id)}
               current={id === currentScreenId}
               onClick={() => onScreenClick(id)}
+              // Only when this screen IS the entire flow — a single dead-end screen with
+              // nothing after it. Any main path longer than one screen never gets this
+              // button; removing something in the middle of a real flow isn't this
+              // control's job (see hideScreen's own refusal for exactly that case).
+              onRemove={main.length === 1 && onRemoveOrphan ? () => onRemoveOrphan(id) : undefined}
             />
           </div>
         ),
@@ -579,7 +600,14 @@ function WalkGrid({
           />
         ) : (
           <div key={id} style={{ gridColumn: main.length + j + 1, gridRow: 1 }}>
-            <Thumb id={id} graph={graph} flagsByScreen={flagsByScreen} current={id === currentScreenId} onClick={() => onScreenClick(id)} />
+            <Thumb
+              id={id}
+              graph={graph}
+              flagsByScreen={flagsByScreen}
+              current={id === currentScreenId}
+              onClick={() => onScreenClick(id)}
+              onRemove={onRemoveOrphan ? () => onRemoveOrphan(id) : undefined}
+            />
           </div>
         ),
       )}
@@ -658,6 +686,7 @@ function Thumb({
   dashed,
   current,
   onClick,
+  onRemove,
 }: {
   id: string;
   graph: WalkGraphWithUrls;
@@ -666,17 +695,20 @@ function Thumb({
   dashed?: boolean;
   current: boolean;
   onClick: () => void;
+  /** Only ever passed for an orphan screen (V6, not reachable from the flow) — a linked screen isn't removable this way, see hideScreen's own header. */
+  onRemove?: () => void;
 }) {
   const screen = graph.screens.find((s) => s.id === id);
   const version = screen?.currentVersion ? graph.imageVersions.find((v) => v.id === screen.currentVersion) : null;
   const url = version ? graph.signedUrls[version.id] : null;
   const flags = flagsByScreen.get(id) ?? [];
   return (
-    <button
-      className={"walk-thumb" + (dashed ? " walk-thumb-lane" : "") + (current ? " on" : "")}
-      title={flags.map((f) => WALK_FLAG_LABELS[f.rule]).join("; ") || undefined}
-      onClick={onClick}
-    >
+    <div className="walk-thumb-wrap">
+      <button
+        className={"walk-thumb" + (dashed ? " walk-thumb-lane" : "") + (current ? " on" : "")}
+        title={flags.map((f) => WALK_FLAG_LABELS[f.rule]).join("; ") || undefined}
+        onClick={onClick}
+      >
       <span className="walk-thumb-tile">
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -692,7 +724,13 @@ function Thumb({
         {flags.length ? <span className="walk-thumb-badge">!</span> : null}
       </span>
       <span className="walk-thumb-id">{id}</span>
-    </button>
+      </button>
+      {onRemove ? (
+        <button className="walk-thumb-remove" aria-label={`Remove ${id}`} title="Remove from view" onClick={onRemove}>
+          ×
+        </button>
+      ) : null}
+    </div>
   );
 }
 

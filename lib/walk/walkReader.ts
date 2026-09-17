@@ -35,7 +35,9 @@ export async function getWalkGraphForNode(client: SupabaseClient, nodeId: string
   if (!ownFlows || ownFlows.length === 0) return { flows: [], screens: [], imageVersions: [], touchPoints: [] };
 
   const ownFlowIds = ownFlows.map((f) => f.id);
-  const { data: ownScreens, error: screenError } = await client.from("walk_screen").select("*").in("flow_id", ownFlowIds);
+  // Hidden screens (walkWriter.hideScreen) are excluded here, not filtered later — derive.ts
+  // never learns a hidden screen existed at all, the same as if it had never been created.
+  const { data: ownScreens, error: screenError } = await client.from("walk_screen").select("*").in("flow_id", ownFlowIds).eq("hidden", false);
   if (screenError) throw new Error(`getWalkGraphForNode: ${screenError.message}`);
 
   const { data: ownTouchPoints, error: tpError } = await client
@@ -51,7 +53,7 @@ export async function getWalkGraphForNode(client: SupabaseClient, nodeId: string
   let exitScreens: typeof ownScreens = [];
   let exitFlows: typeof ownFlows = [];
   if (exitScreenIds.length > 0) {
-    const { data, error } = await client.from("walk_screen").select("*").in("id", exitScreenIds);
+    const { data, error } = await client.from("walk_screen").select("*").in("id", exitScreenIds).eq("hidden", false);
     if (error) throw new Error(`getWalkGraphForNode: ${error.message}`);
     exitScreens = data ?? [];
     const exitFlowIds = [...new Set(exitScreens.map((s) => s.flow_id))];

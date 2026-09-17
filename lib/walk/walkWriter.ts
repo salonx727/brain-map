@@ -335,3 +335,53 @@ export async function branchFromScreen(
 
   return { screenId };
 }
+
+/**
+ * Removes a screen from view — a mistake, a test upload, whatever shouldn't be seen
+ * anymore. Never touches walk_image_version (immutable by design, BUILD_PROMPT hard
+ * constraint 10 — that stays permanent) or the screen row itself; only flips `hidden` and
+ * clears the touch points that reached it, so getWalkGraphForNode stops returning it and
+ * nothing is left pointing at a screen that's no longer there to point at (which would
+ * otherwise surface as a V5 "broken link" instead of the screen just being gone).
+ *
+ * A flow's start_screen is only removable when nothing comes after it (no outgoing touch
+ * points) — exactly the "uploaded one test image and never built the flow out" case this
+ * exists for. flow.start_screen is cleared back to null alongside it, same state as a
+ * freshly started, still-empty flow (startWalkForNode) — the next screen added becomes
+ * the entry point again, same as the first time. A start_screen with real content after it
+ * stays refused: detaching it would strand every screen downstream as unreachable orphans,
+ * which is a worse version of the exact problem this function is for.
+ */
+export async function hideScreen(client: SupabaseClient, input: { nodeId: string; screenId: string }): Promise<void> {
+  const { data: flow, error: flowError } = await client.from("walk_flow").select("id, start_screen").eq("start_screen", input.screenId).maybeSingle();
+  if (flowError) throw new Error(`hideScreen: ${flowError.message}`);
+
+  if (flow) {
+    const { count, error: outgoingCountError } = await client
+      .from("walk_touch_point")
+      .select("id", { count: "exact", head: true })
+      .eq("screen_id", input.screenId);
+    if (outgoingCountError) throw new Error(`hideScreen: ${outgoingCountError.message}`);
+    if ((count ?? 0) > 0) {
+      throw new Error(`hideScreen: ${input.screenId} is this flow's start screen and has content after it — nothing removable here without breaking the rest of the flow`);
+    }
+    const { error: clearStartError } = await client.from("walk_flow").update({ start_screen: null }).eq("id", flow.id);
+    if (clearStartError) throw new Error(`hideScreen: ${clearStartError.message}`);
+  }
+
+  const { error: incomingError } = await client.from("walk_touch_point").delete().eq("to_screen", input.screenId);
+  if (incomingError) throw new Error(`hideScreen: ${incomingError.message}`);
+
+  const { error: outgoingError } = await client.from("walk_touch_point").delete().eq("screen_id", input.screenId);
+  if (outgoingError) throw new Error(`hideScreen: ${outgoingError.message}`);
+
+  const { error: hideError } = await client.from("walk_screen").update({ hidden: true }).eq("id", input.screenId);
+  if (hideError) throw new Error(`hideScreen: ${hideError.message}`);
+
+  await client.from("walk_change_log").insert({
+    node_id: input.nodeId,
+    screen_id: input.screenId,
+    kind: "hidden",
+    detail: `${input.screenId} removed from view`,
+  });
+}

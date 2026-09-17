@@ -14,6 +14,7 @@ import {
   branchFromScreen,
   createScreenAtEnd,
   discardStagedImage,
+  hideScreen,
   insertScreenBetween,
   replaceScreenImage,
   stageImage,
@@ -123,4 +124,11 @@ export async function startWalkForNodeAction(input: { nodeId: string; title?: st
   const result = await startWalkForNode(client, input);
   revalidatePath("/");
   return result;
+}
+
+/** Removes a screen from view — never the image versions underneath it. See walkWriter.hideScreen's own header. */
+export async function hideScreenAction(input: { nodeId: string; screenId: string }) {
+  const client = createPmServiceClient();
+  await hideScreen(client, input);
+  revalidatePath("/");
 }

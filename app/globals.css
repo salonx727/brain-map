@@ -1291,6 +1291,10 @@ button.walk-flowtab {
   gap: 40px 24px;
   padding: 24px 0;
 }
+.walk-thumb-wrap {
+  position: relative;
+  width: 72px;
+}
 .walk-thumb {
   background: none;
   border: none;
@@ -1300,6 +1304,29 @@ button.walk-flowtab {
   width: 72px;
   text-align: center;
   font-size: 12px;
+}
+/* Only ever rendered on an orphan screen — hideScreen removes it from view, never the
+   image versions underneath it. Shawn, 2026-09-17: a test upload shouldn't be permanent
+   just because the version record it created has to be. */
+.walk-thumb-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--stroke);
+  background: var(--ground);
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+.walk-thumb-remove:hover {
+  border-color: #ba7517;
+  color: #ba7517;
 }
 .walk-thumb-tile {
   position: relative;
