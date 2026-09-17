@@ -739,20 +739,25 @@ export default function ControlPanel({
         </div>
       ) : null}
 
-      <div style={{ paddingTop: 6 }}>
-        <button
-          className="act armed"
-          style={{ width: "100%", padding: 14, fontSize: 10 }}
-          onClick={() => {
-            const spot = freeSpot(model.nodes, model.order, d.id, "box");
-            void addNode({ x: spot.x, y: spot.y, wireTo: d.id }).then((id) => {
-              if (id) onOpenCard(id, null);
-            });
-          }}
-        >
-          ADD A CARD · WIRED TO THIS ONE
-        </button>
-      </div>
+      {/* Salman, 2026-09-16: only on the card's own face, not inside any category tab —
+          clicking into UI/BLK/whatever is looking at that category's own content, not a
+          place to reach for wiring a new card from. */}
+      {tab === null ? (
+        <div style={{ paddingTop: 6 }}>
+          <button
+            className="act armed"
+            style={{ width: "100%", padding: 14, fontSize: 10 }}
+            onClick={() => {
+              const spot = freeSpot(model.nodes, model.order, d.id, "box");
+              void addNode({ x: spot.x, y: spot.y, wireTo: d.id }).then((id) => {
+                if (id) onOpenCard(id, null);
+              });
+            }}
+          >
+            ADD A SUB NODE OR MODULE
+          </button>
+        </div>
+      ) : null}
 
       {/* Canonical cards have no delete path — an engine exists because COYOTE says so.
           Only PM-created cards can be taken away, empty or not. */}
