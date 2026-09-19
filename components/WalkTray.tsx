@@ -52,31 +52,26 @@ export default function WalkTray({
     if (!file) return;
     setBusy(true);
     setError("");
-    try {
-      const form = new FormData();
-      form.set("file", file);
-      form.set("nodeId", nodeId);
-      const { duplicate } = await stageWalkImageAction(form);
+    const form = new FormData();
+    form.set("file", file);
+    form.set("nodeId", nodeId);
+    const result = await stageWalkImageAction(form);
+    if (result.ok) {
       onChanged();
-      if (duplicate) setError(`"${file.name}" is already in the tray — uploaded again as a separate copy.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
+      if (result.duplicate) setError(`"${file.name}" is already in the tray — uploaded again as a separate copy.`);
+    } else {
+      setError(result.message);
     }
+    setBusy(false);
   }
 
   async function handleDiscard(stagedId: string) {
     setBusy(true);
     setError("");
-    try {
-      await discardStagedImageAction(stagedId);
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    const result = await discardStagedImageAction(stagedId);
+    if (result.ok) onChanged();
+    else setError(result.message);
+    setBusy(false);
   }
 
   async function handleReplace(stagedId: string, screenId: string) {
@@ -84,14 +79,10 @@ export default function WalkTray({
     setError("");
     setConfirmReplace(null);
     closeMenus();
-    try {
-      await replaceScreenImageAction({ nodeId, stagedId, screenId });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    const result = await replaceScreenImageAction({ nodeId, stagedId, screenId });
+    if (result.ok) onChanged();
+    else setError(result.message);
+    setBusy(false);
   }
 
   async function handleNewAtEnd(stagedId: string) {
@@ -99,14 +90,10 @@ export default function WalkTray({
     setBusy(true);
     setError("");
     closeMenus();
-    try {
-      await createScreenAtEndAction({ nodeId, flowId, stagedId });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    const result = await createScreenAtEndAction({ nodeId, flowId, stagedId });
+    if (result.ok) onChanged();
+    else setError(result.message);
+    setBusy(false);
   }
 
   async function handleInsertAfter(stagedId: string, afterScreenId: string) {
@@ -117,14 +104,10 @@ export default function WalkTray({
     setBusy(true);
     setError("");
     closeMenus();
-    try {
-      await insertScreenBetweenAction({ nodeId, flowId, stagedId, afterScreenId, beforeScreenId });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    const result = await insertScreenBetweenAction({ nodeId, flowId, stagedId, afterScreenId, beforeScreenId });
+    if (result.ok) onChanged();
+    else setError(result.message);
+    setBusy(false);
   }
 
   /** Unlike insert, the source screen keeps its existing next screen — this only adds a second path off it. */
@@ -133,14 +116,10 @@ export default function WalkTray({
     setBusy(true);
     setError("");
     closeMenus();
-    try {
-      await branchFromScreenAction({ nodeId, flowId, stagedId, fromScreenId });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    const result = await branchFromScreenAction({ nodeId, flowId, stagedId, fromScreenId });
+    if (result.ok) onChanged();
+    else setError(result.message);
+    setBusy(false);
   }
 
   const insertableAfter = main.slice(0, -1);

@@ -19,9 +19,9 @@ async function main() {
   if (error) throw new Error(`pm_files: ${error.message}`);
 
   for (const file of files ?? []) {
-    // deleteFile removes the Storage object as well as the row — a row deleted on its own
-    // would leave the bytes sitting in the bucket forever with nothing pointing at them.
-    await pmWriter.deleteFile(client, file.id);
+    // purgeFile, not deleteFile — a verification probe should leave no trace, not sit in
+    // the deleted/ archive forever the way a real photo's soft delete does.
+    await pmWriter.purgeFile(client, file.id);
     console.log(`deleted ${file.file_name}`);
   }
   if (!files?.length) console.log("No probe uploads to remove.");

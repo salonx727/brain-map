@@ -13,12 +13,15 @@ import { signWalkImageUrl } from "@/lib/walk/walkStorage";
 import {
   branchFromScreen,
   createScreenAtEnd,
+  createTouchPoint,
+  deleteTouchPoint,
   discardStagedImage,
   hideScreen,
   insertScreenBetween,
   replaceScreenImage,
   stageImage,
   startWalkForNode,
+  updateTouchPoint,
 } from "@/lib/walk/walkWriter";
 import type { WalkGraph, WalkStagedImage } from "@/lib/walk/types";
 
@@ -62,39 +65,70 @@ export async function getWalkForNodeAction(nodeId: string): Promise<WalkGraphWit
   return { ...graph, signedUrls, stagedImages, stagedUrls };
 }
 
+// Every write action below returns a result instead of throwing — confirmed live
+// 2026-09-18 (hideScreenAction, first): Next.js redacts a thrown Server Action error's
+// message in production to the same generic "An error occurred in the Server Components
+// render..." text on every throw, digest-only, regardless of how specific the message
+// actually was server-side. Catching here and handing back a plain `{ ok: false, message }`
+// is the only way a caller's flash/error state shows the real reason. `revalidatePath`
+// only ever runs on the success path — a failed write changed nothing worth re-reading.
+
 /** Uploads a file straight into the tray, unassigned — never a Figma frame-picker (superseded task C, Shawn's ruling 2026-09-17). `duplicate` is a warning for the caller to surface, never a block. */
-export async function stageWalkImageAction(formData: FormData): Promise<{ staged: WalkStagedImage; duplicate: boolean }> {
-  const file = formData.get("file");
-  if (!(file instanceof Blob)) throw new Error("stageWalkImageAction: no file provided");
-  const nodeId = formData.get("nodeId") as string | null;
-  if (!nodeId) throw new Error("stageWalkImageAction: nodeId is required");
-  const fileName = file instanceof File ? file.name : "upload";
+export async function stageWalkImageAction(
+  formData: FormData,
+): Promise<{ ok: true; staged: WalkStagedImage; duplicate: boolean } | { ok: false; message: string }> {
+  try {
+    const file = formData.get("file");
+    if (!(file instanceof Blob)) throw new Error("stageWalkImageAction: no file provided");
+    const nodeId = formData.get("nodeId") as string | null;
+    if (!nodeId) throw new Error("stageWalkImageAction: nodeId is required");
+    const fileName = file instanceof File ? file.name : "upload";
 
-  const client = createPmServiceClient();
-  const bytes = await file.arrayBuffer();
-  const result = await stageImage(client, { nodeId, fileName, contentType: file.type || null, bytes });
-  revalidatePath("/");
-  return result;
+    const client = createPmServiceClient();
+    const bytes = await file.arrayBuffer();
+    const result = await stageImage(client, { nodeId, fileName, contentType: file.type || null, bytes });
+    revalidatePath("/");
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
-export async function discardStagedImageAction(stagedId: string): Promise<void> {
-  const client = createPmServiceClient();
-  await discardStagedImage(client, stagedId);
-  revalidatePath("/");
+export async function discardStagedImageAction(stagedId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    await discardStagedImage(client, stagedId);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
-export async function replaceScreenImageAction(input: { nodeId: string; stagedId: string; screenId: string }) {
-  const client = createPmServiceClient();
-  const result = await replaceScreenImage(client, input);
-  revalidatePath("/");
-  return result;
+export async function replaceScreenImageAction(
+  input: { nodeId: string; stagedId: string; screenId: string },
+): Promise<{ ok: true; versionId: string } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    const result = await replaceScreenImage(client, input);
+    revalidatePath("/");
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
-export async function createScreenAtEndAction(input: { nodeId: string; flowId: string; stagedId: string; title?: string }) {
-  const client = createPmServiceClient();
-  const result = await createScreenAtEnd(client, input);
-  revalidatePath("/");
-  return result;
+export async function createScreenAtEndAction(
+  input: { nodeId: string; flowId: string; stagedId: string; title?: string },
+): Promise<{ ok: true; screenId: string } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    const result = await createScreenAtEnd(client, input);
+    revalidatePath("/");
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function insertScreenBetweenAction(input: {
@@ -104,31 +138,92 @@ export async function insertScreenBetweenAction(input: {
   afterScreenId: string;
   beforeScreenId: string;
   title?: string;
-}) {
-  const client = createPmServiceClient();
-  const result = await insertScreenBetween(client, input);
-  revalidatePath("/");
-  return result;
+}): Promise<{ ok: true; screenId: string } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    const result = await insertScreenBetween(client, input);
+    revalidatePath("/");
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
-export async function branchFromScreenAction(input: { nodeId: string; flowId: string; stagedId: string; fromScreenId: string; title?: string }) {
-  const client = createPmServiceClient();
-  const result = await branchFromScreen(client, input);
-  revalidatePath("/");
-  return result;
+export async function branchFromScreenAction(
+  input: { nodeId: string; flowId: string; stagedId: string; fromScreenId: string; title?: string },
+): Promise<{ ok: true; screenId: string } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    const result = await branchFromScreen(client, input);
+    revalidatePath("/");
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Every node's own WALK — Shawn, 2026-09-17. Creates an empty flow (no screens yet) so the tray has something to attach the first upload to. */
-export async function startWalkForNodeAction(input: { nodeId: string; title?: string }) {
-  const client = createPmServiceClient();
-  const result = await startWalkForNode(client, input);
-  revalidatePath("/");
-  return result;
+export async function startWalkForNodeAction(
+  input: { nodeId: string; title?: string },
+): Promise<{ ok: true; flowId: string } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    const result = await startWalkForNode(client, input);
+    revalidatePath("/");
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Removes a screen from view — never the image versions underneath it. See walkWriter.hideScreen's own header. */
-export async function hideScreenAction(input: { nodeId: string; screenId: string }) {
+export async function hideScreenAction(input: { nodeId: string; screenId: string }): Promise<{ ok: true } | { ok: false; message: string }> {
   const client = createPmServiceClient();
-  await hideScreen(client, input);
+  try {
+    await hideScreen(client, input);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
   revalidatePath("/");
+  return { ok: true };
+}
+
+/** Adds a touch point at an exact, double-clicked position on the preview image. See walkWriter.createTouchPoint's own header. */
+export async function createTouchPointAction(
+  input: { screenId: string; x: number; y: number; action: string; toScreen: string },
+): Promise<{ ok: true; touchPointId: string } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    const result = await createTouchPoint(client, input);
+    revalidatePath("/");
+    return { ok: true, ...result };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Changes an existing touch point's label, destination, and/or position. See walkWriter.updateTouchPoint's own header. */
+export async function updateTouchPointAction(
+  input: { touchPointId: string; x?: number; y?: number; action?: string; toScreen?: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    await updateTouchPoint(client, input);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Removes a touch point. See walkWriter.deleteTouchPoint's own header. */
+export async function deleteTouchPointAction(touchPointId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    await deleteTouchPoint(client, touchPointId);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }

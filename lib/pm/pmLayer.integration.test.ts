@@ -275,15 +275,14 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
     expect(ids).toContain(second.id);
   }, 20_000);
 
-  it("deletes a UI screenshot by id, removing both the row and the Storage object", async () => {
+  it("deletes a UI screenshot by id — soft-deleted, moved to the deleted/ archive, gone from every live read", async () => {
     const file = await pmWriter.addUiScreenshot(serviceClient, { nodeKey: CANONICAL_NODE_KEY, fileName: `${TEST_MARKER}-clearme.jpg`, contentType: "image/jpeg", bytes: Buffer.from("x") });
     await pmWriter.deleteFile(serviceClient, file.id);
 
     const layer = await getPmLayerForNodeKeys(anonClient, [CANONICAL_NODE_KEY]);
     expect(layer.files.some((f) => f.id === file.id)).toBe(false);
 
-    // Storage object is gone too — Supabase validates existence at sign time, so even
-    // requesting a signed URL for it now fails, not just the eventual download.
+    // Nothing signs at the old path — the object moved under deleted/, it wasn't removed.
     await expect(pmWriter.getSignedFileUrl(serviceClient, file.storagePath)).rejects.toThrow(/not found/i);
   }, 20_000);
 
@@ -307,7 +306,7 @@ describe.skipIf(!hasCreds)("live PM layer", () => {
     for (const u of uploads) expect(layer.files.some((f) => f.id === u.id)).toBe(true);
   }, 20_000);
 
-  it("DROP intake: removing a file deletes both the pm_files row and the Storage object", async () => {
+  it("DROP intake: removing a file soft-deletes the row and archives the Storage object", async () => {
     const file = await pmWriter.uploadFile(serviceClient, { fileName: `${TEST_MARKER}-removeme.txt`, contentType: "text/plain", bytes: Buffer.from("x"), nodeKey: CANONICAL_NODE_KEY });
     await pmWriter.deleteFile(serviceClient, file.id);
 

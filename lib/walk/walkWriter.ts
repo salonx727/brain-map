@@ -279,6 +279,19 @@ export async function insertScreenBetween(
  * a brand-new screen. That's what makes it a lane rather than a longer main path; lanes()
  * already picks up any touch point with n >= 2 on a main-path screen, so no derive.ts
  * change is needed for the new lane to render once this touch point exists.
+ *
+ * n=1 is reserved for the main path everywhere in this app (mainTouchPoint() in derive.ts
+ * picks it by that number alone) — confirmed live 2026-09-18: branching from a screen with
+ * no other outgoing touch points computed "one past the highest existing n" as 1, which
+ * made the branch indistinguishable from a main-path continuation (rendered in the main
+ * row, labeled "(main path)"). The floor of 1 below guarantees a branch is never born as 1.
+ *
+ * Screen id is a composite of the branch point and a lane letter — Shawn, 2026-09-18:
+ * `N3-A1` reads as "branch off screen 3" on sight, where the old flat `.N9` gave no hint a
+ * screen was a branch at all. The letter counts existing branch lanes off this exact
+ * screen (A, B, C...); every branchFromScreen call starts a new lane, so the screen is
+ * always that lane's first — never a second screen appended after it, since there is no
+ * "add to an existing lane" action today.
  */
 export async function branchFromScreen(
   client: SupabaseClient,
@@ -289,10 +302,14 @@ export async function branchFromScreen(
 
   const { data: existingTps, error: tpError } = await client.from("walk_touch_point").select("n").eq("screen_id", input.fromScreenId);
   if (tpError) throw new Error(`branchFromScreen: ${tpError.message}`);
-  const nextN = 1 + Math.max(0, ...(existingTps ?? []).map((t) => t.n as number));
+  const highestN = Math.max(1, ...(existingTps ?? []).map((t) => t.n as number));
+  const nextN = highestN + 1;
+  const branchCount = (existingTps ?? []).filter((t) => (t.n as number) >= 2).length;
+  const branchLetter = String.fromCharCode(65 + branchCount);
 
-  const count = await countScreensInFlow(client, input.flowId);
-  const screenId = `${input.flowId}.N${count + 1}`;
+  const mainNumberMatch = /\.N(\d+)$/.exec(input.fromScreenId);
+  if (!mainNumberMatch) throw new Error(`branchFromScreen: "${input.fromScreenId}" is not a main-path screen id — branching only ever starts from one`);
+  const screenId = `${input.flowId}.N${mainNumberMatch[1]}-${branchLetter}1`;
 
   const { error: screenError } = await client.from("walk_screen").insert({ id: screenId, flow_id: input.flowId, title: input.title ?? staged.file_name });
   if (screenError) throw new Error(`branchFromScreen: ${screenError.message}`);
@@ -353,27 +370,31 @@ export async function branchFromScreen(
  * which is a worse version of the exact problem this function is for.
  */
 export async function hideScreen(client: SupabaseClient, input: { nodeId: string; screenId: string }): Promise<void> {
-  const { data: flow, error: flowError } = await client.from("walk_flow").select("id, start_screen").eq("start_screen", input.screenId).maybeSingle();
-  if (flowError) throw new Error(`hideScreen: ${flowError.message}`);
+  // Universal guard, not just the start screen — Codeman, 2026-09-18: the remove button
+  // now shows on every thumbnail, not only a single dead-end flow's lone screen, so this
+  // can no longer rely on the UI alone to keep someone from pulling a screen out from the
+  // middle of a real flow. A screen with outgoing touch points has content after it;
+  // hiding it here would delete those touch points and strand that content unreachable,
+  // which is never what "remove this" meant. Only a dead end (nothing pointing onward) is
+  // safe to hide with no further repair.
+  const { count: outgoingCount, error: outgoingCountError } = await client
+    .from("walk_touch_point")
+    .select("id", { count: "exact", head: true })
+    .eq("screen_id", input.screenId);
+  if (outgoingCountError) throw new Error(`hideScreen: ${outgoingCountError.message}`);
+  if ((outgoingCount ?? 0) > 0) {
+    throw new Error(`hideScreen: ${input.screenId} has content after it — nothing removable here without breaking the rest of the flow`);
+  }
 
+  const { data: flow, error: flowError } = await client.from("walk_flow").select("id").eq("start_screen", input.screenId).maybeSingle();
+  if (flowError) throw new Error(`hideScreen: ${flowError.message}`);
   if (flow) {
-    const { count, error: outgoingCountError } = await client
-      .from("walk_touch_point")
-      .select("id", { count: "exact", head: true })
-      .eq("screen_id", input.screenId);
-    if (outgoingCountError) throw new Error(`hideScreen: ${outgoingCountError.message}`);
-    if ((count ?? 0) > 0) {
-      throw new Error(`hideScreen: ${input.screenId} is this flow's start screen and has content after it — nothing removable here without breaking the rest of the flow`);
-    }
     const { error: clearStartError } = await client.from("walk_flow").update({ start_screen: null }).eq("id", flow.id);
     if (clearStartError) throw new Error(`hideScreen: ${clearStartError.message}`);
   }
 
   const { error: incomingError } = await client.from("walk_touch_point").delete().eq("to_screen", input.screenId);
   if (incomingError) throw new Error(`hideScreen: ${incomingError.message}`);
-
-  const { error: outgoingError } = await client.from("walk_touch_point").delete().eq("screen_id", input.screenId);
-  if (outgoingError) throw new Error(`hideScreen: ${outgoingError.message}`);
 
   const { error: hideError } = await client.from("walk_screen").update({ hidden: true }).eq("id", input.screenId);
   if (hideError) throw new Error(`hideScreen: ${hideError.message}`);
@@ -384,4 +405,82 @@ export async function hideScreen(client: SupabaseClient, input: { nodeId: string
     kind: "hidden",
     detail: `${input.screenId} removed from view`,
   });
+}
+
+/**
+ * One past the highest n already on this screen, floored at 1 — n=1 is reserved for the
+ * main path everywhere in this app (mainTouchPoint() in derive.ts picks it by that number
+ * alone; confirmed live 2026-09-18, see branchFromScreen's own header for the incident).
+ * A screen with nothing on it yet gets n=1 (it becomes the main path forward); every touch
+ * point after that is a branch, whatever screen it's added from.
+ */
+async function nextSafeN(client: SupabaseClient, screenId: string): Promise<number> {
+  const { data, error } = await client.from("walk_touch_point").select("n").eq("screen_id", screenId);
+  if (error) throw new Error(`nextSafeN: ${error.message}`);
+  if (!data || data.length === 0) return 1;
+  return Math.max(1, ...data.map((t) => t.n as number)) + 1;
+}
+
+/**
+ * Adds a touch point at an exact, human-placed position — Codeman, 2026-09-18: double-click
+ * the preview image, place a new control there. placed_on is set to the screen's current
+ * version immediately, never null — a human just placed this by hand, so it never earns
+ * "check position" (V2) the way a system-computed default (branchFromScreen, insertScreenBetween)
+ * does until confirmed.
+ */
+export async function createTouchPoint(
+  client: SupabaseClient,
+  input: { screenId: string; x: number; y: number; action: string; toScreen: string },
+): Promise<{ touchPointId: string }> {
+  const { data: screen, error: screenError } = await client.from("walk_screen").select("current_version").eq("id", input.screenId).single();
+  if (screenError) throw new Error(`createTouchPoint: ${screenError.message}`);
+
+  const n = await nextSafeN(client, input.screenId);
+  const id = `${input.screenId}.T${n}`;
+  const { error: insertError } = await client.from("walk_touch_point").insert({
+    id,
+    screen_id: input.screenId,
+    n,
+    x: input.x,
+    y: input.y,
+    action: input.action,
+    to_screen: input.toScreen,
+    placed_on: screen.current_version,
+  });
+  if (insertError) throw new Error(`createTouchPoint: ${insertError.message}`);
+  return { touchPointId: id };
+}
+
+/**
+ * Changes an existing touch point's label, destination, and/or position — never its n, the
+ * one thing that decides main-path-vs-branch and must never move once assigned. Repositioning
+ * (x/y both given) re-confirms placed_on against the screen's current version, the same "a
+ * human just placed this" signal createTouchPoint gives a brand-new one.
+ */
+export async function updateTouchPoint(
+  client: SupabaseClient,
+  input: { touchPointId: string; x?: number; y?: number; action?: string; toScreen?: string },
+): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (input.action !== undefined) patch.action = input.action;
+  if (input.toScreen !== undefined) patch.to_screen = input.toScreen;
+  if (input.x !== undefined && input.y !== undefined) {
+    const { data: tp, error: tpError } = await client.from("walk_touch_point").select("screen_id").eq("id", input.touchPointId).single();
+    if (tpError) throw new Error(`updateTouchPoint: ${tpError.message}`);
+    const { data: screen, error: screenError } = await client.from("walk_screen").select("current_version").eq("id", tp.screen_id).single();
+    if (screenError) throw new Error(`updateTouchPoint: ${screenError.message}`);
+    patch.x = input.x;
+    patch.y = input.y;
+    patch.placed_on = screen.current_version;
+  }
+  if (Object.keys(patch).length === 0) return;
+
+  const { error } = await client.from("walk_touch_point").update(patch).eq("id", input.touchPointId);
+  if (error) throw new Error(`updateTouchPoint: ${error.message}`);
+}
+
+/** Removes a touch point — the screen it pointed at is not touched, and simply becomes unreachable from here if nothing else points to it (surfaced by validateFlow's V6, not this function's job). */
+export async function deleteTouchPoint(client: SupabaseClient, touchPointId: string): Promise<void> {
+  const { error } = await client.from("walk_touch_point").delete().eq("id", touchPointId);
+  if (error) throw new Error(`deleteTouchPoint: ${error.message}`);
 }

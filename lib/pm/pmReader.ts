@@ -206,7 +206,7 @@ export async function getPmLayerForNodeKeys(client: SupabaseClient, nodeKeys: st
       client.from("pm_items").select("*").in("node_key", nodeKeys),
       client.from("pm_notes").select("*").in("node_key", nodeKeys),
       client.from("pm_references").select("*").in("node_key", nodeKeys),
-      client.from("pm_files").select("*").in("node_key", nodeKeys),
+      client.from("pm_files").select("*").in("node_key", nodeKeys).is("deleted_at", null),
       client.from("pm_node_links").select("*").in("from_node_key", nodeKeys),
       client.from("pm_node_links").select("*").in("to_node_key", nodeKeys),
       // Unscoped by node key on purpose — the whole assignee directory is two rows
@@ -282,7 +282,7 @@ export async function getWholePmLayer(client: SupabaseClient): Promise<PmLayer> 
       client.from("pm_items").select("*"),
       client.from("pm_notes").select("*"),
       client.from("pm_references").select("*"),
-      client.from("pm_files").select("*"),
+      client.from("pm_files").select("*").is("deleted_at", null),
       client.from("pm_node_links").select("*"),
       client.from("pm_node_state").select("*"),
       client.from("pm_rulings").select("*"),
@@ -328,7 +328,12 @@ export async function getItemsForNodeKey(client: SupabaseClient, nodeKey: string
 
 /** The UNSORTED inbox — files dropped with no node assignment yet. */
 export async function getUnsortedFiles(client: SupabaseClient): Promise<PmFile[]> {
-  const { data, error } = await client.from("pm_files").select("*").is("node_key", null).order("created_at", { ascending: false });
+  const { data, error } = await client
+    .from("pm_files")
+    .select("*")
+    .is("node_key", null)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
   if (error) throw new Error(`getUnsortedFiles: ${error.message}`);
   return (data ?? []).map(fileRow);
 }

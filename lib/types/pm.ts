@@ -63,7 +63,7 @@ export interface PmNote {
   updatedAt: string | null;
 }
 
-export type PmReferenceType = "figma" | "wireframe" | "ui_slot" | "link";
+export type PmReferenceType = "figma" | "wireframe" | "ui_slot" | "link" | "live_platform";
 
 export interface PmReference {
   id: string;

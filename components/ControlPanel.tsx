@@ -18,6 +18,7 @@ import {
   deleteNodeLinkAction,
   proposeConnectionAction,
   renamePmNodeAction,
+  setLivePlatformUrlAction,
   updateNodeLinkAction,
 } from "@/app/actions/pm";
 import { updateRulingIntentAction } from "@/app/actions/rulings";
@@ -107,6 +108,10 @@ export default function ControlPanel({
   const [screensOpen, setScreensOpen] = useState(false);
   /** Where WALK should land after an exit tile switched this panel to another node. */
   const [walkLanding, setWalkLanding] = useState<WalkLanding | null>(null);
+  /** Editing the live-platform URL — Codeman, 2026-09-18. Closed by default so a node with
+      nothing set yet doesn't show an input up front; opens on demand to add or change it. */
+  const [editingLiveUrl, setEditingLiveUrl] = useState(false);
+  const [liveUrlError, setLiveUrlError] = useState("");
 
   useEffect(() => {
     return () => {
@@ -294,6 +299,99 @@ export default function ControlPanel({
           NAME AND REF COME FROM COYOTE · TO-DOS, FILES AND WIRES BELOW ARE YOURS
         </div>
       ) : null}
+
+      {/* Live-platform route — Codeman, 2026-09-18. The Brain and salonx.com are two
+          separate platforms; this is the real app route, distinct from the Storage-hosted
+          prototype in the UI tab's PROTOTYPE panel. Hidden with nothing set, per his own
+          instruction not to show the button until a URL actually exists. */}
+      <div style={{ marginBottom: 18 }}>
+        {d.liveUrl && !editingLiveUrl ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            <a
+              className="act armed"
+              style={{ flex: 1, padding: 13, fontSize: 10, textAlign: "center" }}
+              href={d.liveUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              OPEN LIVE PLATFORM
+            </a>
+            <button
+              className="act"
+              style={{ padding: 13, fontSize: 10 }}
+              onClick={() => {
+                setLiveUrlError("");
+                setEditingLiveUrl(true);
+              }}
+            >
+              EDIT
+            </button>
+          </div>
+        ) : editingLiveUrl ? (
+          <div>
+            <label>
+              <span className="lab">LIVE PLATFORM URL</span>
+              <input
+                className="f"
+                defaultValue={d.liveUrl ?? ""}
+                placeholder="https://salonx.com/app/..."
+                autoFocus
+                onKeyDown={async (e) => {
+                  if (e.key !== "Enter") return;
+                  const value = e.currentTarget.value.trim();
+                  const result = await setLivePlatformUrlAction({ nodeKey: d.id, url: value || null });
+                  if (result.ok) {
+                    d.liveUrl = value || null;
+                    bump();
+                    setEditingLiveUrl(false);
+                  } else {
+                    setLiveUrlError(result.message);
+                  }
+                }}
+              />
+            </label>
+            {liveUrlError ? (
+              <div className="cap" style={{ color: "var(--baton)", marginTop: 6 }}>
+                {liveUrlError}
+              </div>
+            ) : null}
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button className="act" style={{ flex: 1, padding: 10, fontSize: 9 }} onClick={() => setEditingLiveUrl(false)}>
+                CANCEL
+              </button>
+              {d.liveUrl ? (
+                <button
+                  className="act"
+                  style={{ flex: 1, padding: 10, fontSize: 9 }}
+                  onClick={async () => {
+                    const result = await setLivePlatformUrlAction({ nodeKey: d.id, url: null });
+                    if (result.ok) {
+                      d.liveUrl = null;
+                      bump();
+                      setEditingLiveUrl(false);
+                    } else {
+                      setLiveUrlError(result.message);
+                    }
+                  }}
+                >
+                  REMOVE
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <button
+            className="act"
+            style={{ padding: 10, fontSize: 9 }}
+            onClick={() => {
+              setLiveUrlError("");
+              setEditingLiveUrl(true);
+            }}
+          >
+            + ADD LIVE PLATFORM LINK
+          </button>
+        )}
+      </div>
 
       {/* What this card is proposing, in the vocabulary Shawn writes canon in. Shown only
           while its ruling is open: once he has ruled, the intent is the record of what he

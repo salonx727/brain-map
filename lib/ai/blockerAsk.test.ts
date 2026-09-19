@@ -19,6 +19,7 @@ function card(over: Partial<BrainNode> = {}): BrainNode {
     blockers: [],
     screens: [],
     drops: [],
+    liveUrl: null,
     ...over,
   };
 }

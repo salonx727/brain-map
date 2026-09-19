@@ -97,6 +97,14 @@ export type BrainNode = {
    */
   screens: Shot[];
   drops: Drop[];
+  /**
+   * The real salonx.com route for this module, once one exists — Codeman, 2026-09-18: the
+   * Brain and salonx.com are two separate platforms, and a module's Storage-hosted
+   * prototype is not its live route. Sourced from a pm_references row of type
+   * "live_platform"; null until that route is built and the URL is set. Never guessed,
+   * never derived from the prototype link.
+   */
+  liveUrl: string | null;
 };
 
 export type Link = {

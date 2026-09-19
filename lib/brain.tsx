@@ -273,6 +273,7 @@ export function BrainProvider({
           blockers: [],
           screens: [],
           drops: [],
+          liveUrl: null,
         };
         m.order.push(created.nodeKey);
         if (ruling) m.rulings = [...m.rulings, ruling];

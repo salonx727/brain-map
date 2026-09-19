@@ -239,6 +239,24 @@ export async function deleteFileAction(fileId: string) {
   revalidatePath("/");
 }
 
+/**
+ * Sets (or clears, with a null/empty url) a node's one live-platform route — Codeman,
+ * 2026-09-18. Returns a result rather than throwing: confirmed live the same day
+ * (hideScreenAction) that Next.js redacts a thrown Server Action error's message in
+ * production to a generic, unhelpful line — a result object is what lets the real reason
+ * reach whoever set the URL.
+ */
+export async function setLivePlatformUrlAction(input: { nodeKey: string; url: string | null }): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const client = createPmServiceClient();
+    await pmWriter.setLivePlatformUrl(client, { nodeKey: input.nodeKey, url: input.url?.trim() || null });
+    revalidatePath("/");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Work-state is global per node_key, independent of any layout — see pmWriter.setNodeState's own header comment. Valid for a canonical node_key just as much as a PM one. */
 export async function setNodeStateAction(nodeKey: string, state: PmNodeState["state"], updatedBy?: string | null) {
   const client = createPmServiceClient();

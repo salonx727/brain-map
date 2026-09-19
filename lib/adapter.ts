@@ -86,6 +86,7 @@ function emptyNode(id: string, ref: string, shape: Shape, x: number, y: number, 
     blockers: [],
     screens: [],
     drops: [],
+    liveUrl: null,
   };
 }
 
@@ -244,6 +245,16 @@ export function buildModel(
   // by a deleted middle screenshot is the entire job; nothing needs re-sorting.
   for (const target of Object.values(nodes)) {
     target.screens = target.screens.filter((shot): shot is Shot => Boolean(shot));
+  }
+
+  // The one live-platform reference per node, if one has been set — Codeman, 2026-09-18.
+  // Never more than one shown: if a node somehow carries more than one live_platform row,
+  // the most recently created wins rather than picking arbitrarily. Sorted oldest-first so
+  // the plain assignment loop below naturally ends on the newest.
+  const liveRefs = pm.references.filter((r) => r.refType === "live_platform").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const ref of liveRefs) {
+    const target = nodes[ref.nodeKey];
+    if (target) target.liveUrl = ref.url;
   }
 
   // Two sources, deliberately distinguishable. A COYOTE-declared edge carries `canon` and

@@ -104,6 +104,7 @@ export function buildSeedNodes(): { nodes: Nodes; order: string[]; byRef: Record
       blockers: [],
       screens: [],
       drops: [],
+      liveUrl: null,
     };
     byRef[s[0]] = id;
     order.push(id);

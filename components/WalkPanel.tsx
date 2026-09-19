@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { getWalkForNodeAction, hideScreenAction, startWalkForNodeAction, type WalkGraphWithUrls } from "@/app/actions/walk";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  createTouchPointAction,
+  deleteTouchPointAction,
+  getWalkForNodeAction,
+  hideScreenAction,
+  startWalkForNodeAction,
+  updateTouchPointAction,
+  type WalkGraphWithUrls,
+} from "@/app/actions/walk";
 import { useBrain } from "@/lib/brain";
 import { flowsForNode, laneSequence, lanes, mainPath, orphanScreens, validateFlow } from "@/lib/walk/derive";
 import { WALK_FLAG_LABELS, type WalkFlag, type WalkLane } from "@/lib/walk/types";
@@ -77,14 +85,10 @@ function WalkStartPrompt({ nodeId, onChanged }: { nodeId: string; onChanged: () 
   async function handleStart() {
     setBusy(true);
     setError("");
-    try {
-      await startWalkForNodeAction({ nodeId });
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    const result = await startWalkForNodeAction({ nodeId });
+    if (result.ok) onChanged();
+    else setError(result.message);
+    setBusy(false);
   }
 
   return (
@@ -124,6 +128,12 @@ function WalkViewer({
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [flash, setFlash] = useState("");
   const stageRef = useRef<HTMLDivElement>(null);
+  /** Double-click the preview image to add or edit a touch point — Codeman, 2026-09-18.
+      existingId null means "create new here"; a real id means "editing this one," and the
+      click also repositions it to wherever was just double-clicked. */
+  const [tpModal, setTpModal] = useState<{ screenId: string; existingId: string | null; x: number; y: number; action: string; toScreen: string } | null>(null);
+  const [tpError, setTpError] = useState("");
+  const [tpBusy, setTpBusy] = useState(false);
 
   useEffect(() => {
     if (landing?.flowId) {
@@ -207,11 +217,11 @@ function WalkViewer({
   const handleRemoveOrphan = useCallback(
     async (screenId: string) => {
       if (orphanView === screenId) setOrphanView(null);
-      try {
-        await hideScreenAction({ nodeId, screenId });
+      const result = await hideScreenAction({ nodeId, screenId });
+      if (result.ok) {
         onChanged();
-      } catch (e) {
-        setFlash(e instanceof Error ? e.message : String(e));
+      } else {
+        setFlash(result.message);
       }
     },
     [nodeId, onChanged, orphanView],
@@ -227,6 +237,68 @@ function WalkViewer({
       goToFlowScreen(exit.flow, exit.screen);
     },
     [nodeId, model.nodes, onOpenNode, graph.flows, goToFlowScreen],
+  );
+
+  /** Double-click near an existing touch point edits (and repositions) it; anywhere else starts a new one at that exact spot. "Near" is a small percentage radius, not pixel-exact — a phone finger is wider than a mouse pointer. */
+  const handleImageDoubleClick = useCallback(
+    (screenId: string, x: number, y: number) => {
+      setTpError("");
+      const onScreen = graph.touchPoints.filter((t) => t.screenId === screenId);
+      const nearby = onScreen.find((t) => Math.abs(t.x - x) <= 5 && Math.abs(t.y - y) <= 5);
+      if (nearby) {
+        setTpModal({ screenId, existingId: nearby.id, x, y, action: nearby.action, toScreen: nearby.toScreen });
+      } else {
+        setTpModal({ screenId, existingId: null, x, y, action: "", toScreen: "" });
+      }
+    },
+    [graph.touchPoints],
+  );
+
+  const handleSaveTouchPoint = useCallback(async () => {
+    if (!tpModal) return;
+    if (!tpModal.action.trim() || !tpModal.toScreen) {
+      setTpError("A label and a destination screen are both required.");
+      return;
+    }
+    setTpBusy(true);
+    setTpError("");
+    const result = tpModal.existingId
+      ? await updateTouchPointAction({ touchPointId: tpModal.existingId, x: tpModal.x, y: tpModal.y, action: tpModal.action.trim(), toScreen: tpModal.toScreen })
+      : await createTouchPointAction({ screenId: tpModal.screenId, x: tpModal.x, y: tpModal.y, action: tpModal.action.trim(), toScreen: tpModal.toScreen });
+    setTpBusy(false);
+    if (result.ok) {
+      onChanged();
+      setTpModal(null);
+    } else {
+      setTpError(result.message);
+    }
+  }, [tpModal, onChanged]);
+
+  const handleDeleteTouchPoint = useCallback(
+    async (touchPointId: string) => {
+      setTpBusy(true);
+      setTpError("");
+      const result = await deleteTouchPointAction(touchPointId);
+      setTpBusy(false);
+      if (result.ok) {
+        onChanged();
+        setTpModal(null);
+      } else {
+        setTpError(result.message);
+      }
+    },
+    [onChanged],
+  );
+
+  /** Hold-then-drag finished — Codeman, 2026-09-18: a touch point is never static once
+      armed, so this is the plain position update a drag ends with, no popup involved. */
+  const handleTouchPointReposition = useCallback(
+    async (touchPointId: string, x: number, y: number) => {
+      const result = await updateTouchPointAction({ touchPointId, x, y });
+      if (result.ok) onChanged();
+      else setFlash(result.message);
+    },
+    [onChanged],
   );
 
   const navigateTo = useCallback(
@@ -368,6 +440,8 @@ function WalkViewer({
                   }
                   navigateTo(toScreen);
                 }}
+                onImageDoubleClick={currentScreenId ? (x, y) => handleImageDoubleClick(currentScreenId, x, y) : undefined}
+                onTouchPointReposition={handleTouchPointReposition}
               />
               <div className="walk-cap">
                 {currentScreenId} — {currentScreen?.title ?? ""}
@@ -443,6 +517,99 @@ function WalkViewer({
       )}
 
       {flowId ? <WalkTray nodeId={nodeId} flowId={flowId} main={main} graph={graph} onChanged={onChanged} /> : null}
+
+      {tpModal ? (
+        <div
+          className="screens-modal-scrim"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setTpModal(null);
+          }}
+        >
+          <div className="screens-modal-card">
+            <div className="head">
+              <div className="title">{tpModal.existingId ? "Edit touch point" : "Add touch point"}</div>
+              <button className="dismiss" aria-label="Dismiss" onClick={() => setTpModal(null)}>
+                <span />
+              </button>
+            </div>
+
+            <label style={{ display: "block", marginTop: 10 }}>
+              <span className="lab">LABEL</span>
+              <input
+                className="f"
+                value={tpModal.action}
+                placeholder="e.g. CONTROL X"
+                onChange={(e) => setTpModal({ ...tpModal, action: e.target.value })}
+              />
+            </label>
+
+            <div style={{ marginTop: 10 }}>
+              <span className="lab">
+                DESTINATION SCREEN{tpModal.toScreen ? ` · ${tpModal.toScreen}` : ""}
+              </span>
+              {/* Tap the actual screen, not a name in a list — Codeman, 2026-09-18: whichever
+                  image you pick here becomes the destination, nothing to separately select. */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                {graph.screens
+                  .filter((s) => s.flowId === flowId && s.id !== tpModal.screenId)
+                  .map((s) => (
+                    <div key={s.id} style={{ width: 72 }}>
+                      <Thumb
+                        id={s.id}
+                        graph={graph}
+                        flagsByScreen={flagsByScreen}
+                        current={tpModal.toScreen === s.id}
+                        onClick={() => setTpModal({ ...tpModal, toScreen: s.id })}
+                      />
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {tpError ? (
+              <div className="cap" style={{ color: "var(--baton)", marginTop: 10 }}>
+                {tpError}
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button className="act" disabled={tpBusy} onClick={() => setTpModal(null)}>
+                Cancel
+              </button>
+              {tpModal.existingId ? (
+                <button className="act" disabled={tpBusy} onClick={() => handleDeleteTouchPoint(tpModal.existingId as string)}>
+                  Delete
+                </button>
+              ) : null}
+              <button className="act armed" style={{ flex: 1 }} disabled={tpBusy} onClick={handleSaveTouchPoint}>
+                {tpModal.existingId ? "Save" : "Add"}
+              </button>
+            </div>
+
+            {(() => {
+              const others = graph.touchPoints.filter((t) => t.screenId === tpModal.screenId && t.id !== tpModal.existingId);
+              if (!others.length) return null;
+              return (
+                <>
+                  <div className="cap" style={{ marginTop: 16, marginBottom: 8 }}>
+                    OTHER TOUCH POINTS ON THIS SCREEN
+                  </div>
+                  {others.map((t) => (
+                    <div className="item" key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                      <span>
+                        T{t.n} · {t.action} → {t.toScreen}
+                      </span>
+                      <button className="minus" aria-label="Delete" disabled={tpBusy} onClick={() => handleDeleteTouchPoint(t.id)}>
+                        <span />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -468,21 +635,124 @@ function placeholderBars(id: string): number[] {
   return Array.from({ length: count }, (_, i) => 50 + ((n >> (i * 5)) % 41));
 }
 
+/** Hold for 3 seconds — it blinks — then drag anywhere in the image. A touch point is
+    never static once armed. Released early or without moving, it's a plain tap and
+    navigates, exactly as before — Codeman, 2026-09-18. */
+const TOUCH_POINT_HOLD_MS = 3000;
+
+function TouchPointMarker({
+  tp,
+  onNavigate,
+  onReposition,
+}: {
+  tp: { id: string; n: number; x: number; y: number; action: string; toScreen: string };
+  onNavigate: (toScreen: string) => void;
+  onReposition: (id: string, x: number, y: number) => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  const [livePos, setLivePos] = useState<{ x: number; y: number } | null>(null);
+  const holdTimer = useRef<number | null>(null);
+  const containerRect = useRef<DOMRect | null>(null);
+  const justDragged = useRef(false);
+
+  function clearHold() {
+    if (holdTimer.current) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLButtonElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    containerRect.current = e.currentTarget.parentElement?.getBoundingClientRect() ?? null;
+    clearHold();
+    holdTimer.current = window.setTimeout(() => {
+      setArmed(true);
+      setLivePos({ x: tp.x, y: tp.y });
+    }, TOUCH_POINT_HOLD_MS);
+  }
+
+  function handlePointerMove(e: ReactPointerEvent<HTMLButtonElement>) {
+    if (!armed) return;
+    const rect = containerRect.current;
+    if (!rect) return;
+    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+    setLivePos({ x, y });
+  }
+
+  function handlePointerUp() {
+    clearHold();
+    if (armed) {
+      const final = livePos ?? { x: tp.x, y: tp.y };
+      setArmed(false);
+      setLivePos(null);
+      justDragged.current = true;
+      onReposition(tp.id, final.x, final.y);
+    }
+  }
+
+  function handlePointerCancel() {
+    clearHold();
+    setArmed(false);
+    setLivePos(null);
+  }
+
+  const pos = livePos ?? { x: tp.x, y: tp.y };
+  return (
+    <button
+      className={"walk-tp" + (armed ? " armed" : "")}
+      style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+      title={tp.action}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (justDragged.current) {
+          justDragged.current = false;
+          return;
+        }
+        onNavigate(tp.toScreen);
+      }}
+    >
+      {tp.n}
+    </button>
+  );
+}
+
 function PhoneFrame({
   screenId,
   screenTitle,
   imageUrl,
   touchPoints,
   onTouchPointClick,
+  onImageDoubleClick,
+  onTouchPointReposition,
 }: {
   screenId: string | undefined;
   screenTitle: string;
   imageUrl: string | null;
   touchPoints: { id: string; n: number; x: number; y: number; action: string; toScreen: string }[];
   onTouchPointClick: (toScreen: string) => void;
+  onImageDoubleClick?: (x: number, y: number) => void;
+  onTouchPointReposition: (id: string, x: number, y: number) => void;
 }) {
   return (
-    <div className="walk-ph">
+    <div
+      className="walk-ph"
+      onDoubleClick={
+        onImageDoubleClick
+          ? (e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+              const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+              onImageDoubleClick(x, y);
+            }
+          : undefined
+      }
+    >
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={imageUrl} alt={screenTitle} />
@@ -494,15 +764,7 @@ function PhoneFrame({
         </div>
       )}
       {touchPoints.map((tp) => (
-        <button
-          key={tp.id}
-          className="walk-tp"
-          style={{ left: `${tp.x}%`, top: `${tp.y}%` }}
-          title={tp.action}
-          onClick={() => onTouchPointClick(tp.toScreen)}
-        >
-          {tp.n}
-        </button>
+        <TouchPointMarker key={tp.id} tp={tp} onNavigate={onTouchPointClick} onReposition={onTouchPointReposition} />
       ))}
     </div>
   );
@@ -578,11 +840,12 @@ function WalkGrid({
               branch={branchPoints.has(id)}
               current={id === currentScreenId}
               onClick={() => onScreenClick(id)}
-              // Only when this screen IS the entire flow — a single dead-end screen with
-              // nothing after it. Any main path longer than one screen never gets this
-              // button; removing something in the middle of a real flow isn't this
-              // control's job (see hideScreen's own refusal for exactly that case).
-              onRemove={main.length === 1 && onRemoveOrphan ? () => onRemoveOrphan(id) : undefined}
+              // Codeman, 2026-09-18: shown on every main-path thumbnail now, not just a
+              // single dead-end flow's lone screen. hideScreen itself refuses (with a
+              // clear message, surfaced via the flash line) to remove anything that still
+              // has content after it — the safety this button needs no longer depends on
+              // the UI only offering it where it was already known to be safe.
+              onRemove={onRemoveOrphan ? () => onRemoveOrphan(id) : undefined}
             />
           </div>
         ),
@@ -618,8 +881,12 @@ function WalkGrid({
           lanesList
             .slice(0, i)
             .filter((other) => main.indexOf(other.from) === fromIdx).length;
-        const fromCol = fromIdx + 1;
-        const startCol = Math.max(1, fromCol + 1);
+        // Directly under the parent's own column, not offset one to the right — Shawn/
+        // Codeman, 2026-09-18 (sketch): two neighbouring main-path screens each branching
+        // "in the same direction" could overlap under the old +1 offset the moment a lane
+        // ever grows past one screen. Anchored under its own parent, a lane can never share
+        // a column with a different parent's lane, whatever length it grows to.
+        const startCol = Math.max(1, fromIdx + 1);
         return (
           <span key={i} style={{ display: "contents" }}>
             {lane.screens.map((id, j) =>

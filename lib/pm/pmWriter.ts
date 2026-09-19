@@ -347,6 +347,24 @@ export async function addReference(client: SupabaseClient, input: { nodeKey: str
   return { id: row.id, nodeKey: row.node_key, refType: row.ref_type, label: row.label, url: row.url, createdBy: row.created_by, createdAt: row.created_at };
 }
 
+/**
+ * The one live-platform route for a node — Codeman, 2026-09-18: the real salonx.com route,
+ * separate from the Storage-hosted prototype PrototypePanel already shows. Replaces rather
+ * than appends: a node has at most one live route, so setting a new one clears whatever
+ * was there rather than leaving old rows for the reader to pick a "newest" out of. Passing
+ * an empty/null url removes it — clearing the field is "no live route yet," not an error.
+ */
+export async function setLivePlatformUrl(client: SupabaseClient, input: { nodeKey: string; url: string | null; createdBy?: string | null }): Promise<void> {
+  const { error: deleteError } = await client.from("pm_references").delete().eq("node_key", input.nodeKey).eq("ref_type", "live_platform");
+  if (deleteError) throw new Error(`setLivePlatformUrl: ${deleteError.message}`);
+  if (!input.url) return;
+
+  const { error: insertError } = await client
+    .from("pm_references")
+    .insert({ node_key: input.nodeKey, url: input.url, ref_type: "live_platform", label: "Live Platform", created_by: input.createdBy ?? null });
+  if (insertError) throw new Error(`setLivePlatformUrl: ${insertError.message}`);
+}
+
 function fileFromRow(row: { id: string; node_key: string | null; storage_path: string; file_name: string; content_type: string | null; size_bytes: number | null; slot_index: number | null; created_by: string | null; created_at: string }): PmFile {
   return {
     id: row.id,
@@ -460,16 +478,48 @@ export async function addUiScreenshot(
   return fileFromRow(row);
 }
 
-/** Removes a file — both the Storage object and the pm_files row — keyed by id alone. Used for an ordinary DROP-tab file and, since 2026-09-15, for a UI screenshot too: neither has a fixed slot identity worth deleting by (nodeKey, slotIndex) instead of just its own id. */
+/**
+ * Soft-deletes a file — keyed by id alone. Used for an ordinary DROP-tab file and for a UI
+ * screenshot: neither has a fixed slot identity worth deleting by (nodeKey, slotIndex)
+ * instead of just its own id.
+ *
+ * Shawn, 2026-09-17: "anything deleted will be held in a deleted photo file" — the object
+ * moves to a `deleted/` prefix in the same bucket rather than being removed, and the row
+ * gets `deleted_at` instead of being dropped. pmReader's queries filter it out from every
+ * live read, so it disappears from the card exactly as before; the bytes and the row just
+ * aren't gone. (Migration 0020 — pm_files.deleted_at — confirmed live by Codeman 2026-09-17
+ * before this went back in.)
+ */
 export async function deleteFile(client: SupabaseClient, fileId: string): Promise<void> {
   const { data: existing, error: selectError } = await client.from("pm_files").select("storage_path").eq("id", fileId).single();
   if (selectError) throw new Error(`deleteFile: ${selectError.message}`);
 
+  const archivedPath = `deleted/${existing.storage_path}`;
+  const { error: moveError } = await client.storage.from(BUCKET).move(existing.storage_path, archivedPath);
+  if (moveError) throw new Error(`deleteFile: storage move failed: ${moveError.message}`);
+
+  const { error: updateError } = await client
+    .from("pm_files")
+    .update({ storage_path: archivedPath, deleted_at: new Date().toISOString() })
+    .eq("id", fileId);
+  if (updateError) throw new Error(`deleteFile: row update failed: ${updateError.message}`);
+}
+
+/**
+ * True removal — both the Storage object and the pm_files row, gone outright. For
+ * maintenance/test cleanup only (scripts/purge-bridge-probes.ts): a verification probe has
+ * no reason to sit in the deleted/ archive forever. Never called from product UI —
+ * deleteFile's soft delete is what a real photo goes through.
+ */
+export async function purgeFile(client: SupabaseClient, fileId: string): Promise<void> {
+  const { data: existing, error: selectError } = await client.from("pm_files").select("storage_path").eq("id", fileId).single();
+  if (selectError) throw new Error(`purgeFile: ${selectError.message}`);
+
   const { error: removeError } = await client.storage.from(BUCKET).remove([existing.storage_path]);
-  if (removeError) throw new Error(`deleteFile: storage remove failed: ${removeError.message}`);
+  if (removeError) throw new Error(`purgeFile: storage remove failed: ${removeError.message}`);
 
   const { error: deleteError } = await client.from("pm_files").delete().eq("id", fileId);
-  if (deleteError) throw new Error(`deleteFile: row delete failed: ${deleteError.message}`);
+  if (deleteError) throw new Error(`purgeFile: row delete failed: ${deleteError.message}`);
 }
 
 /** A time-limited, signed download URL — the only way a file's bytes ever reach the browser; the bucket has no anon read policy at all. */

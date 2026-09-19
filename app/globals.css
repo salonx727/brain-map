@@ -1019,7 +1019,8 @@ select.f option {
   cursor: default;
 }
 
-button.act {
+button.act,
+a.act {
   background: var(--graphite);
   border: 1px solid var(--stroke);
   border-radius: var(--radius-chip);
@@ -1031,10 +1032,17 @@ button.act {
   cursor: pointer;
   transition: border-color 140ms var(--ease);
 }
-button.act:hover {
+a.act {
+  display: inline-block;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+button.act:hover,
+a.act:hover {
   border-color: var(--baton);
 }
-button.act.armed {
+button.act.armed,
+a.act.armed {
   border-color: var(--baton);
   color: var(--baton);
 }
@@ -1191,16 +1199,22 @@ button.walk-flowtab {
   background: rgba(255, 255, 255, 0.02);
 }
 .walk-phonewrap {
-  height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 .walk-ph {
+  /* Fixed to the viewport, never to .walk-stage's own height — Codeman, 2026-09-18:
+     height: 100% took its size from whatever space was left after the rest of THIS
+     screen's content (flags, legend, grid), which differs screen to screen, so the frame
+     visibly resized on every Next/Previous. Sized off the viewport instead, which doesn't
+     change between screens, so the frame itself never does either. */
   position: relative;
-  height: 100%;
-  max-height: 640px;
+  height: min(640px, 52vh);
   aspect-ratio: 9 / 19;
+  /* Without this, the default flex stretch along .walk-phonewrap's cross axis let width
+     drift off the aspect-ratio-derived value on some screens — confirmed live, same fix. */
+  align-self: center;
   background: var(--graphite);
   border: 1px solid var(--stroke);
   border-radius: 24px;
@@ -1237,6 +1251,19 @@ button.walk-flowtab {
   border: none;
   padding: 0;
   cursor: pointer;
+  touch-action: none;
+}
+/* Hold 3s to arm, then drag — Codeman, 2026-09-18: a touch point is never static once
+   armed. Blinking is the only signal that it's now grabbed and will move with the finger. */
+.walk-tp.armed {
+  animation: walk-tp-blink 0.6s step-start infinite;
+  cursor: grabbing;
+  z-index: 5;
+}
+@keyframes walk-tp-blink {
+  50% {
+    opacity: 0.25;
+  }
 }
 .walk-cap {
   text-align: center;

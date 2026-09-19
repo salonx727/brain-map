@@ -97,7 +97,8 @@ export async function getRulingsForNodeKeys(client: SupabaseClient, nodeKeys: st
  * agree on the words and almost never on the formatting ("Spotlight card" vs
  * "E12 - SPOTLIGHT CARD"). Leading canonical id prefixes are stripped for the same reason.
  */
-export function normalizeLabel(label: string): string {
+export function normalizeLabel(label: string | null | undefined): string {
+  if (!label) return "";
   return label
     .toUpperCase()
     .replace(/^(E|S|INT)\s*\d+[\s\-–—:.]*/u, "")

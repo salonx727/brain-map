@@ -19,6 +19,7 @@ function node(id: string, origin: BrainNode["origin"], ref = id, name = ""): Bra
     blockers: [],
     screens: [],
     drops: [],
+    liveUrl: null,
   };
 }
 
