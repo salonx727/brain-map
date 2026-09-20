@@ -130,10 +130,16 @@ body {
   margin-top: 5px;
   /* A long single word (AFTERBURNER, GHOST NOTES at #plane.far's larger font) wraps
      instead of overflowing the card's fixed width — the card's own height is auto
-     (.node.hasctl), so wrapping grows it downward rather than spilling sideways. */
+     (.node.hasctl), so wrapping grows it downward rather than spilling sideways.
+     word-break stays "normal" so a two-word name (GHOST NOTES, THE INK) only ever
+     splits at the space between words. overflow-wrap is the sole fallback, and it
+     only breaks mid-word when a single word is wider than the whole card — with
+     word-break: break-word also set, both EMPIRE and SIGNAL were splitting into
+     orphan single letters at #plane.far's larger font, on cards wide enough to hold
+     the whole word (Salman, 2026-09-19, screenshot). */
   max-width: 100%;
   overflow-wrap: break-word;
-  word-break: break-word;
+  word-break: normal;
 }
 .node.circle .n-name,
 .node.pill .n-name {
@@ -1848,6 +1854,16 @@ button.walk-flowtab {
   font-family: var(--font-space-mono), monospace;
   font-size: 14px;
   line-height: 1;
+}
+/* Link to the ops dashboard, styled as a stepper circle so it reads as one more control
+   in the bar rather than a foreign element — Salman, 2026-09-19: wanted a small control
+   button, bottom-left, matching the bar, out to salonx-ops.vercel.app. */
+.ops-link {
+  text-decoration: none;
+  box-sizing: border-box;
+}
+.ops-link:hover {
+  border-color: var(--baton);
 }
 
 /* SCREEN's popup — RESET/BALANCE/REALIGN. Opens upward: #bar sits at the bottom edge,

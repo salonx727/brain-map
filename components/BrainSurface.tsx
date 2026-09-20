@@ -100,7 +100,12 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
     const far = v.k < 0.55;
     plane.classList.toggle("far", far);
     if (far) {
-      const px = Math.min(14 / v.k, 62);
+      // Capped at 36, not 62 — at typical overview zoom (k~0.25-0.4) the uncapped value
+      // ran to 48-56px against a fixed 168px circle / 190px box, leaving so little width
+      // per line that names like EMPIRE, SIGNAL, AFTERBURNER and BOOKING word-broke down
+      // to single orphan letters (Salman, 2026-09-19, screenshot). 36 keeps most engine
+      // names on one line and lets the rest wrap at worst two-deep.
+      const px = Math.min(14 / v.k, 30);
       plane.style.setProperty("--farname", px.toFixed(1) + "px");
     }
     plane.style.transform =
@@ -728,6 +733,17 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
       </div>
 
       <div id="bar">
+        <a
+          className="stepper ops-link"
+          href="https://salonx-ops.vercel.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Open Salon X Ops"
+          title="Salon X Ops"
+        >
+          ↗
+        </a>
+        <span className="sep" />
         <button
           className="stepper"
           aria-label="Zoom out"
