@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans, Space_Mono } from "next/font/google";
+import DeployWatcher from "@/components/DeployWatcher";
 import "./globals.css";
 
 /* Type: DM Sans = language · Space Mono = labels and values. */
@@ -33,7 +34,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${dmSans.variable} ${spaceMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <DeployWatcher />
+      </body>
     </html>
   );
 }
