@@ -741,7 +741,8 @@ function Surface({ reconcile }: { reconcile: ReconcileCandidate[] }) {
           aria-label="Open Salon X Ops"
           title="Salon X Ops"
         >
-          ↗
+          <span />
+          <span />
         </a>
         <span className="sep" />
         <button
